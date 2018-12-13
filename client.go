@@ -42,6 +42,7 @@ func getGrpcConn(ctx context.Context, opts *Options) (conn *grpc.ClientConn, err
 
 }
 
+// NewClient - creat client instance to be use to communicate with KubeMQ server
 func NewClient(ctx context.Context, op ...Option) (*Client, error) {
 	opts := GetDefaultOptions()
 	for _, o := range op {
@@ -60,9 +61,13 @@ func NewClient(ctx context.Context, op ...Option) (*Client, error) {
 	}
 	return client, nil
 }
+
+// Close - closing client connection. any on going transactions will be aborted
 func (c *Client) Close() error {
 	return c.grpcConn.Close()
 }
+
+// NewEvent - create an event object
 func (c *Client) NewEvent(ctx context.Context) *Event {
 	return &Event{
 		ctx:      ctx,
@@ -70,6 +75,53 @@ func (c *Client) NewEvent(ctx context.Context) *Event {
 		clientId: c.opts.clientId,
 	}
 }
+
+// StreamEvents - send stream of events in a single call
+func (c *Client) StreamEvents(ctx context.Context, eventsCh chan *Event, errCh chan error) {
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stream, err := c.grpcClient.SendEventsStream(streamCtx)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	defer stream.CloseSend()
+	go func() {
+		for {
+			result, err := stream.Recv()
+			if err != nil {
+				errCh <- err
+				cancel()
+				return
+			}
+			if !result.Sent {
+				errCh <- fmt.Errorf("%s", result.Error)
+			}
+		}
+	}()
+
+	for {
+		select {
+		case event := <-eventsCh:
+			err := stream.Send(&pb.Event{
+				EventID:  event.EventID,
+				ClientID: c.opts.clientId,
+				Channel:  event.Channel,
+				Metadata: event.Metadata,
+				Body:     event.Body,
+			})
+			if err != nil {
+				errCh <- err
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+
+}
+
+// SubscribeToEvents - subscribe to events by channel and group. return channel of events or en error
 func (c *Client) SubscribeToEvents(ctx context.Context, channel, group string, errCh chan error) (<-chan *Event, error) {
 	eventsCh := make(chan *Event, c.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
@@ -87,6 +139,8 @@ func (c *Client) SubscribeToEvents(ctx context.Context, channel, group string, e
 			event, err := stream.Recv()
 			if err != nil {
 				errCh <- err
+				close(eventsCh)
+				return
 			}
 			eventsCh <- &Event{
 				EventID:  event.EventID,
