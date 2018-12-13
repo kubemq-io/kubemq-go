@@ -11,23 +11,23 @@ func main() {
 	defer cancel()
 	client, err := kubemq.NewClient(ctx,
 		kubemq.WithAddress("localhost", 50000),
-		kubemq.WithClientId("test-client-id"))
+		kubemq.WithClientId("test-event-client-id"))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer client.Close()
-	channel := "testing_channel"
+	channel := "testing_event_channel"
 	errCh := make(chan error)
 	eventsCh, err := client.SubscribeToEvents(ctx, channel, "", errCh)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = client.NewEvent(ctx).
-		SetEventId("some-id").
+	err = client.E().
+		SetId("some-id").
 		SetChannel(channel).
 		SetMetadata("some-metadata").
-		SetBody([]byte("hello kubemq from send single event")).
-		Send()
+		SetBody([]byte("hello kubemq - sending single event")).
+		Send(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,10 +35,10 @@ func main() {
 		eventStreamCh := make(chan *kubemq.Event, 1)
 		errStreamCh := make(chan error, 1)
 		go client.StreamEvents(ctx, eventStreamCh, errStreamCh)
-		event := client.NewEvent(ctx).SetEventId("some-id").
+		event := client.E().SetId("some-event-id").
 			SetChannel(channel).
 			SetMetadata("some-metadata").
-			SetBody([]byte("hello kubemq from send stream event"))
+			SetBody([]byte("hello kubemq - sending stream event"))
 		for {
 			select {
 			case err := <-errStreamCh:
@@ -57,7 +57,7 @@ func main() {
 			log.Fatal(err)
 			return
 		case event := <-eventsCh:
-			log.Printf("Event Recevied:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.EventID, event.Channel, event.Metadata, event.Body)
+			log.Printf("Event Recevied:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.Id, event.Channel, event.Metadata, event.Body)
 		}
 	}
 

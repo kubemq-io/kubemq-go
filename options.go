@@ -1,5 +1,7 @@
 package kubemq
 
+import "time"
+
 type Option interface {
 	apply(*Options)
 }
@@ -13,6 +15,8 @@ type Options struct {
 	token                string
 	clientId             string
 	receiveBufferSize    int
+	defaultChannel       string
+	defaultCacheTTL      time.Duration
 }
 
 type funcOptions struct {
@@ -69,6 +73,19 @@ func WithReceiveBufferSize(size int) Option {
 	})
 }
 
+// WithDefaultChannel - set default channel for any outbound requests
+func WithDefualtChannel(channel string) Option {
+	return newFuncOption(func(o *Options) {
+		o.defaultChannel = channel
+	})
+}
+
+// WithDefaultCacheTTL - set default cache time to live for any query requests with any CacheKey set value
+func WithDefaultCacheTTL(ttl time.Duration) Option {
+	return newFuncOption(func(o *Options) {
+		o.defaultCacheTTL = ttl
+	})
+}
 func GetDefaultOptions() *Options {
 	return &Options{
 		host:                 "localhost",
@@ -77,7 +94,9 @@ func GetDefaultOptions() *Options {
 		certFile:             "",
 		serverOverrideDomain: "",
 		token:                "",
-		clientId:             "clientId",
+		clientId:             "ClientId",
 		receiveBufferSize:    10,
+		defaultChannel:       "",
+		defaultCacheTTL:      time.Minute * 15,
 	}
 }

@@ -158,7 +158,7 @@ func (m *Empty) XXX_DiscardUnknown() {
 var xxx_messageInfo_Empty proto.InternalMessageInfo
 
 type Result struct {
-	EventID              string   `protobuf:"bytes,1,opt,name=EventID,proto3" json:"EventID,omitempty"`
+	EventID              string   `protobuf:"bytes,1,opt,name=Id,proto3" json:"Id,omitempty"`
 	Sent                 bool     `protobuf:"varint,2,opt,name=Sent,proto3" json:"Sent,omitempty"`
 	Error                string   `protobuf:"bytes,3,opt,name=Error,proto3" json:"Error,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -219,7 +219,7 @@ func (m *Result) GetError() string {
 }
 
 type Event struct {
-	EventID              string   `protobuf:"bytes,1,opt,name=EventID,proto3" json:"EventID,omitempty"`
+	EventID              string   `protobuf:"bytes,1,opt,name=Id,proto3" json:"Id,omitempty"`
 	ClientID             string   `protobuf:"bytes,2,opt,name=ClientID,proto3" json:"ClientID,omitempty"`
 	Channel              string   `protobuf:"bytes,3,opt,name=Channel,proto3" json:"Channel,omitempty"`
 	Metadata             string   `protobuf:"bytes,4,opt,name=Metadata,proto3" json:"Metadata,omitempty"`
@@ -304,7 +304,7 @@ func (m *Event) GetStore() bool {
 }
 
 type EventReceive struct {
-	EventID              string   `protobuf:"bytes,1,opt,name=EventID,proto3" json:"EventID,omitempty"`
+	EventID              string   `protobuf:"bytes,1,opt,name=Id,proto3" json:"Id,omitempty"`
 	Channel              string   `protobuf:"bytes,2,opt,name=Channel,proto3" json:"Channel,omitempty"`
 	Metadata             string   `protobuf:"bytes,3,opt,name=Metadata,proto3" json:"Metadata,omitempty"`
 	Body                 []byte   `protobuf:"bytes,4,opt,name=Body,proto3" json:"Body,omitempty"`
@@ -1036,7 +1036,7 @@ func (this *Result) GoString() string {
 	}
 	s := make([]string, 0, 7)
 	s = append(s, "&kubemq.Result{")
-	s = append(s, "EventID: "+fmt.Sprintf("%#v", this.EventID)+",\n")
+	s = append(s, "Id: "+fmt.Sprintf("%#v", this.EventID)+",\n")
 	s = append(s, "Sent: "+fmt.Sprintf("%#v", this.Sent)+",\n")
 	s = append(s, "Error: "+fmt.Sprintf("%#v", this.Error)+",\n")
 	s = append(s, "}")
@@ -1048,7 +1048,7 @@ func (this *Event) GoString() string {
 	}
 	s := make([]string, 0, 10)
 	s = append(s, "&kubemq.Event{")
-	s = append(s, "EventID: "+fmt.Sprintf("%#v", this.EventID)+",\n")
+	s = append(s, "Id: "+fmt.Sprintf("%#v", this.EventID)+",\n")
 	s = append(s, "ClientID: "+fmt.Sprintf("%#v", this.ClientID)+",\n")
 	s = append(s, "Channel: "+fmt.Sprintf("%#v", this.Channel)+",\n")
 	s = append(s, "Metadata: "+fmt.Sprintf("%#v", this.Metadata)+",\n")
@@ -1063,7 +1063,7 @@ func (this *EventReceive) GoString() string {
 	}
 	s := make([]string, 0, 10)
 	s = append(s, "&kubemq.EventReceive{")
-	s = append(s, "EventID: "+fmt.Sprintf("%#v", this.EventID)+",\n")
+	s = append(s, "Id: "+fmt.Sprintf("%#v", this.EventID)+",\n")
 	s = append(s, "Channel: "+fmt.Sprintf("%#v", this.Channel)+",\n")
 	s = append(s, "Metadata: "+fmt.Sprintf("%#v", this.Metadata)+",\n")
 	s = append(s, "Body: "+fmt.Sprintf("%#v", this.Body)+",\n")
@@ -2279,7 +2279,7 @@ func (this *Result) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&Result{`,
-		`EventID:` + fmt.Sprintf("%v", this.EventID) + `,`,
+		`Id:` + fmt.Sprintf("%v", this.EventID) + `,`,
 		`Sent:` + fmt.Sprintf("%v", this.Sent) + `,`,
 		`Error:` + fmt.Sprintf("%v", this.Error) + `,`,
 		`}`,
@@ -2291,7 +2291,7 @@ func (this *Event) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&Event{`,
-		`EventID:` + fmt.Sprintf("%v", this.EventID) + `,`,
+		`Id:` + fmt.Sprintf("%v", this.EventID) + `,`,
 		`ClientID:` + fmt.Sprintf("%v", this.ClientID) + `,`,
 		`Channel:` + fmt.Sprintf("%v", this.Channel) + `,`,
 		`Metadata:` + fmt.Sprintf("%v", this.Metadata) + `,`,
@@ -2306,7 +2306,7 @@ func (this *EventReceive) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&EventReceive{`,
-		`EventID:` + fmt.Sprintf("%v", this.EventID) + `,`,
+		`Id:` + fmt.Sprintf("%v", this.EventID) + `,`,
 		`Channel:` + fmt.Sprintf("%v", this.Channel) + `,`,
 		`Metadata:` + fmt.Sprintf("%v", this.Metadata) + `,`,
 		`Body:` + fmt.Sprintf("%v", this.Body) + `,`,
@@ -2459,7 +2459,7 @@ func (m *Result) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EventID", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -2587,7 +2587,7 @@ func (m *Event) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EventID", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -2804,7 +2804,7 @@ func (m *EventReceive) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EventID", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
