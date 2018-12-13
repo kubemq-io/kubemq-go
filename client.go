@@ -3,15 +3,25 @@ package kubemq
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/kubemq-io/go/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"time"
+)
+
+const (
+	defaultRequestTimeout = time.Second * 5
 )
 
 type Client struct {
 	opts       *Options
 	grpcConn   *grpc.ClientConn
 	grpcClient pb.KubemqClient
+}
+
+func generateUUID() string {
+	return uuid.New().String()
 }
 
 func getGrpcConn(ctx context.Context, opts *Options) (conn *grpc.ClientConn, err error) {
@@ -42,7 +52,7 @@ func getGrpcConn(ctx context.Context, opts *Options) (conn *grpc.ClientConn, err
 
 }
 
-// NewClient - creat client instance to be use to communicate with KubeMQ server
+// NewClient - create client instance to be use to communicate with KubeMQ server
 func NewClient(ctx context.Context, op ...Option) (*Client, error) {
 	opts := GetDefaultOptions()
 	for _, o := range op {
@@ -67,12 +77,27 @@ func (c *Client) Close() error {
 	return c.grpcConn.Close()
 }
 
-// NewEvent - create an event object
-func (c *Client) NewEvent(ctx context.Context) *Event {
+// E - create an empty event object
+func (c *Client) E() *Event {
 	return &Event{
-		ctx:      ctx,
+		Id:       generateUUID(),
+		Channel:  c.opts.defaultChannel,
+		Metadata: "",
+		Body:     nil,
+		ClientId: c.opts.clientId,
 		client:   c.grpcClient,
-		clientId: c.opts.clientId,
+	}
+}
+
+// ES - create an empty event store object
+func (c *Client) ES() *EventStore {
+	return &EventStore{
+		Id:       generateUUID(),
+		Channel:  c.opts.defaultChannel,
+		Metadata: "",
+		Body:     nil,
+		ClientId: c.opts.clientId,
+		client:   c.grpcClient,
 	}
 }
 
@@ -104,7 +129,7 @@ func (c *Client) StreamEvents(ctx context.Context, eventsCh chan *Event, errCh c
 		select {
 		case event := <-eventsCh:
 			err := stream.Send(&pb.Event{
-				EventID:  event.EventID,
+				EventID:  event.Id,
 				ClientID: c.opts.clientId,
 				Channel:  event.Channel,
 				Metadata: event.Metadata,
@@ -119,6 +144,100 @@ func (c *Client) StreamEvents(ctx context.Context, eventsCh chan *Event, errCh c
 		}
 	}
 
+}
+
+// StreamEventsStore - send stream of events store in a single call
+func (c *Client) StreamEventsStore(ctx context.Context, eventsCh chan *EventStore, eventsResultCh chan *EventStoreResult, errCh chan error) {
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stream, err := c.grpcClient.SendEventsStream(streamCtx)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	defer stream.CloseSend()
+	go func() {
+		for {
+			result, err := stream.Recv()
+			if err != nil {
+				errCh <- err
+				cancel()
+				return
+			}
+			eventResult := &EventStoreResult{
+				Id:   result.EventID,
+				Sent: result.Sent,
+				Err:  nil,
+			}
+			if !result.Sent {
+				eventResult.Err = fmt.Errorf("%s", result.Error)
+			}
+			eventsResultCh <- eventResult
+		}
+	}()
+
+	for {
+		select {
+		case event := <-eventsCh:
+			err := stream.Send(&pb.Event{
+				EventID:  event.Id,
+				ClientID: c.opts.clientId,
+				Channel:  event.Channel,
+				Metadata: event.Metadata,
+				Body:     event.Body,
+				Store:    true,
+			})
+			if err != nil {
+				errCh <- err
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+
+}
+
+// C - create an empty command object
+func (c *Client) C() *Command {
+	return &Command{
+		Id:       generateUUID(),
+		Channel:  c.opts.defaultChannel,
+		Metadata: "",
+		Body:     nil,
+		Timeout:  defaultRequestTimeout,
+		client:   c.grpcClient,
+		ClientId: c.opts.clientId,
+	}
+}
+
+// Q - create an empty query object
+func (c *Client) Q() *Query {
+	return &Query{
+		Id:       generateUUID(),
+		Channel:  c.opts.defaultChannel,
+		Metadata: "",
+		Body:     nil,
+		Timeout:  defaultRequestTimeout,
+		ClientId: c.opts.clientId,
+		CacheKey: "",
+		CacheTTL: c.opts.defaultCacheTTL,
+		client:   c.grpcClient,
+	}
+}
+
+// R - create an empty response object for command or query responses
+func (c *Client) R() *Response {
+	return &Response{
+		RequestId:  "",
+		ResponseTo: "",
+		Metadata:   "",
+		Body:       nil,
+		ClientId:   c.opts.clientId,
+		ExecutedAt: time.Time{},
+		Err:        nil,
+		client:     c.grpcClient,
+	}
 }
 
 // SubscribeToEvents - subscribe to events by channel and group. return channel of events or en error
@@ -143,7 +262,7 @@ func (c *Client) SubscribeToEvents(ctx context.Context, channel, group string, e
 				return
 			}
 			eventsCh <- &Event{
-				EventID:  event.EventID,
+				Id:       event.EventID,
 				Channel:  event.Channel,
 				Metadata: event.Metadata,
 				Body:     event.Body,
@@ -151,4 +270,109 @@ func (c *Client) SubscribeToEvents(ctx context.Context, channel, group string, e
 		}
 	}()
 	return eventsCh, nil
+}
+
+// SubscribeToEventsStore - subscribe to events store by channel and group with subscription option. return channel of events or en error
+func (c *Client) SubscribeToEventsStore(ctx context.Context, channel, group string, errCh chan error, opt SubscriptionOption) (<-chan *EventStoreReceive, error) {
+	eventsReceiveCh := make(chan *EventStoreReceive, c.opts.receiveBufferSize)
+	subOption := subscriptionOption{}
+	opt.apply(&subOption)
+	subRequest := &pb.Subscribe{
+		SubscribeTypeData:    pb.EventsStore,
+		ClientID:             c.opts.clientId,
+		Channel:              channel,
+		Group:                group,
+		EventsStoreTypeData:  subOption.kind,
+		EventsStoreTypeValue: subOption.value,
+	}
+	stream, err := c.grpcClient.SubscribeToEvents(ctx, subRequest)
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		for {
+			event, err := stream.Recv()
+			if err != nil {
+				errCh <- err
+				close(eventsReceiveCh)
+				return
+			}
+			eventsReceiveCh <- &EventStoreReceive{
+				Id:        event.EventID,
+				Sequence:  event.Sequence,
+				Timestamp: time.Unix(0, event.Timestamp),
+				Channel:   event.Channel,
+				Metadata:  event.Metadata,
+				Body:      event.Body,
+				ClientId:  "",
+			}
+		}
+	}()
+	return eventsReceiveCh, nil
+}
+
+// SubscribeToCommands - subscribe to commands requests by channel and group. return channel of CommandReceived or en error
+func (c *Client) SubscribeToCommands(ctx context.Context, channel, group string, errCh chan error) (<-chan *CommandReceive, error) {
+	commandsCh := make(chan *CommandReceive, c.opts.receiveBufferSize)
+	subRequest := &pb.Subscribe{
+		SubscribeTypeData: pb.Commands,
+		ClientID:          c.opts.clientId,
+		Channel:           channel,
+		Group:             group,
+	}
+	stream, err := c.grpcClient.SubscribeToRequests(ctx, subRequest)
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		for {
+			request, err := stream.Recv()
+			if err != nil {
+				errCh <- err
+				close(commandsCh)
+				return
+			}
+			commandsCh <- &CommandReceive{
+				Id:         request.RequestID,
+				Channel:    request.Channel,
+				Metadata:   request.Metadata,
+				Body:       request.Body,
+				ResponseTo: request.ReplyChannel,
+			}
+		}
+	}()
+	return commandsCh, nil
+}
+
+// SubscribeToQueries - subscribe to queries requests by channel and group. return channel of QueryReceived or en error
+func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, errCh chan error) (<-chan *QueryReceive, error) {
+	queriesCH := make(chan *QueryReceive, c.opts.receiveBufferSize)
+	subRequest := &pb.Subscribe{
+		SubscribeTypeData: pb.Queries,
+		ClientID:          c.opts.clientId,
+		Channel:           channel,
+		Group:             group,
+	}
+	stream, err := c.grpcClient.SubscribeToRequests(ctx, subRequest)
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		for {
+			request, err := stream.Recv()
+			if err != nil {
+				errCh <- err
+				close(queriesCH)
+				return
+			}
+			queriesCH <- &QueryReceive{
+				Id:         request.RequestID,
+				Channel:    request.Channel,
+				Metadata:   request.Metadata,
+				Body:       request.Body,
+				ResponseTo: request.ReplyChannel,
+			}
+		}
+	}()
+	return queriesCH, nil
 }
