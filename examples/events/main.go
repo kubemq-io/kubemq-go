@@ -16,15 +16,15 @@ func main() {
 		log.Fatal(err)
 	}
 	defer client.Close()
-	channel := "testing_event_channel"
+	channelName := "testing_event_channel"
 	errCh := make(chan error)
-	eventsCh, err := client.SubscribeToEvents(ctx, channel, "", errCh)
+	eventsCh, err := client.SubscribeToEvents(ctx, channelName, "", errCh)
 	if err != nil {
 		log.Fatal(err)
 	}
 	err = client.E().
 		SetId("some-id").
-		SetChannel(channel).
+		SetChannel(channelName).
 		SetMetadata("some-metadata").
 		SetBody([]byte("hello kubemq - sending single event")).
 		Send(ctx)
@@ -36,7 +36,7 @@ func main() {
 		errStreamCh := make(chan error, 1)
 		go client.StreamEvents(ctx, eventStreamCh, errStreamCh)
 		event := client.E().SetId("some-event-id").
-			SetChannel(channel).
+			SetChannel(channelName).
 			SetMetadata("some-metadata").
 			SetBody([]byte("hello kubemq - sending stream event"))
 		for {
