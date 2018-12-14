@@ -11,7 +11,7 @@ Please find usage examples on the examples folders.
 Please visit https://kubemq.io, create an account, get KubeMQ token and follow the instructions to run the KubeMQ docker container in your environment. 
 
 ## Core Concepts
-KubwMQ messaging broker has 4 messaging patterns:
+KubeMQ messaging broker has 4 messaging patterns:
 
 - Events - real time pub/sub pattern 
 - Events Store - pub/sub with persistence pattern
@@ -19,8 +19,11 @@ KubwMQ messaging broker has 4 messaging patterns:
 - Queries - the Query part of CQRS pattern, which send a query and get response with the relevant query result back
 
 For each one of the patterns we can distinguish between the senders and the receivers. 
+
 For events and events store the KubeMQ supports both rpc and upstream calls.
+
 the data model is almost identical between all the pattern with some data added related to the specific patter.
+
 The common part of all the patters are:
 
 - Id - the sender can set the Id for each type of message, or the Id will be generate UUID Id for him.
@@ -28,9 +31,13 @@ The common part of all the patters are:
 - Body - a Bytes array which hold the actual payload to be send from the sender to the receiver
 
 The KubeMQ core transport is based on gRPC and the library is a wrapper around the client side of gRPC complied protobuf hence leveraging the gRPC benefits and advantages.
-before any transactions to be perform with KubeMQ server the Client should connect and dial KubeMQ server and obtain Client connection.
-with the Client connection object the user can perform all transactions to and from KubeMQ server.
+
+Before any transactions to be perform with KubeMQ server the Client should connect and dial KubeMQ server and obtain Client connection.
+
+With the Client connection object the user can perform all transactions to and from KubeMQ server.
+
 A Client connection object is thread safe and can be shared between all process needed to communicate with KubeMQ.
+
 **IMPORTANT** - it's the user responsibility to close the Client connection when no further communication with KubeMQ is needed.
 
 ## Connection
@@ -91,7 +98,7 @@ if err != nil {
 		}
 ```
 ### Receiving Events
-First you should subscribe to Events and get channel:
+First you should subscribe to Events and get a channel:
 ```
    	channelName := "testing_event_channel"
    	errCh := make(chan error)
