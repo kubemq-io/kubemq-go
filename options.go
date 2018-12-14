@@ -52,7 +52,7 @@ func WithCredentials(certFile, serverOverrideDomain string) Option {
 	})
 }
 
-// WithToken - set KubeMQ token to be used for KubeMQ connection - not mandatory, only if enforced by the kubemq server
+// WithToken - set KubeMQ token to be used for KubeMQ connection - not mandatory, only if enforced by the KubeMQ server
 func WithToken(token string) Option {
 	return newFuncOption(func(o *Options) {
 		o.token = token
