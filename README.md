@@ -169,6 +169,15 @@ First you should subscribe to Events Store and get a channel:
   	}
   
 ```
+#### Subscription Options
+KubeMQ supports 6 type of subscriptions:
+- StartFromNewEvents - start event store subscription with only new events
+- StartFromFirstEvent - replay all the stored events from the first available sequence and continue stream new events from this point
+- StartFromLastEvent - replay last event and continue stream new events from this point
+- StartFromSequence - replay events from specific event sequence number and continue stream new events from this point
+- StartFromTime - replay events from specific time continue stream new events from this point
+- StartFromTimeDelta - replay events from specific current time - delta duration in seconds, continue stream new events from this point
+
 Then you can loop over the channel of events:
 ```
 	for {
@@ -187,7 +196,7 @@ Commands implements synchronous messaging pattern which the sender send a reques
 
 The response can be successful or not. This is the responsibility of the responder to return with the result of the command within the time the sender set in the request.
 
-### Sending Requests
+### Sending Command Requests
 In this example, the responder should send his response withing one second, otherwise an error will be return as timout.
 ``` 
     response, err := client.C().
@@ -202,7 +211,7 @@ In this example, the responder should send his response withing one second, othe
 	}
 ```
 
-### Receiving Requests
+### Receiving Commands Requests
 First get a channel of commands:
 ``` 
     errCh := make(chan error)
@@ -227,7 +236,7 @@ Then a loop over the channel will get the requests from the senders.
 		}
 ```
 
-### Sending Response
+### Sending a Command Response
 When sending response there are two important things to remember:
 - Set the relevant requestId which you response to
 - Set the ResponseTo string to the value of the request ResponseTo field
@@ -242,3 +251,71 @@ When sending response there are two important things to remember:
 		log.Fatal(err)
 	}
 ```
+
+## Queries
+### Concept
+Queries implements synchronous messaging pattern which the sender send a request and wait for specific amount of time to get a response.
+
+The response must includes metadata or body together with indication of successful or not operation. This is the responsibility of the responder to return with the result of the query within the time the sender set in the request.
+
+### Sending Query Requests
+In this example, the responder should send his response withing one second, otherwise an error will be return as timout.
+``` 
+    response, err := client.Q().
+	    SetId("some-query-id").
+		SetChannel(channel).
+		SetMetadata("some-metadata").
+		SetBody([]byte("hello kubemq - sending a query, please reply")).
+		SetTimeout(time.Second).
+		Send(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+```
+
+### Receiving Query Requests
+First get a channel of queries:
+``` 
+    errCh := make(chan error)
+	queriesCh, err := client.SubscribeToQueries(ctx, channelName, "", errCh)
+	if err != nil {
+			log.Fatal(err)
+	}
+```
+Then a loop over the channel will get the requests from the senders.
+```	
+		for {
+			select {
+			case err := <-errCh:
+				log.Fatal(err)
+				return
+			case query := <-queriesCh:
+				log.Printf("Query Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", query.Id, query.Channel, query.Metadata, query.Body)
+			case <-ctx.Done():
+				return
+			}
+		}
+```
+
+### Sending a Query Response
+When sending response there are two important things to remember:
+- Set the relevant requestId which you response to
+- Set the ResponseTo string to the value of the request ResponseTo field
+
+``` 
+  err := client.R().
+  	SetRequestId(query.Id).
+  	SetResponseTo(query.ResponseTo).
+  	SetExecutedAt(time.Now()).
+  	SetMetadata("this is a response").
+  	SetBody([]byte("got your query, you are good to go")).
+  	Send(ctx)
+  	
+  	if err != nil {
+  			log.Fatal(err)
+  	}
+```
+
+## Support
+- Slack - https://kubemq.slack.com
+- Email - support@kubemq.io
