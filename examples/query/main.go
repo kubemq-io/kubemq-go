@@ -54,12 +54,12 @@ func main() {
 		SetId("some-query-id").
 		SetChannel(channel).
 		SetMetadata("some-metadata").
-		SetBody([]byte("hello kubemq - sending query, please reply")).
+		SetBody([]byte("hello kubemq - sending a query, please reply")).
 		SetTimeout(time.Second).
 		Send(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Resonse Recevied:\nQueryID: %s\nExecutedAt:%s\nMetadat: %s\nBody: %s\n", response.QueryId, response.ExecutedAt, response.Metadata, response.Body)
+	log.Printf("Response Recevied:\nQueryID: %s\nExecutedAt:%s\nMetadat: %s\nBody: %s\n", response.QueryId, response.ExecutedAt, response.Metadata, response.Body)
 
 }

@@ -52,12 +52,12 @@ func main() {
 		SetId("some-command-id").
 		SetChannel(channel).
 		SetMetadata("some-metadata").
-		SetBody([]byte("hello kubemq - sending command, please reply")).
+		SetBody([]byte("hello kubemq - sending a command, please reply")).
 		SetTimeout(time.Second).
 		Send(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Resonse Recevied:\nCommandID: %s\nExecutedAt:%s\n", response.CommandId, response.ExecutedAt)
+	log.Printf("Response Recevied:\nCommandID: %s\nExecutedAt:%s\n", response.CommandId, response.ExecutedAt)
 
 }
