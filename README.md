@@ -44,15 +44,15 @@ A Client connection object is thread safe and can be shared between all process 
 
 Connecting to KubeMQ server can be done like that:
 ```
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	client, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
-		kubemq.WithClientId("test-event-client-id"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer client.Close()
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+client, err := kubemq.NewClient(ctx,
+kubemq.WithAddress("localhost", 50000),
+kubemq.WithClientId("test-event-client-id"))
+if err != nil {
+	log.Fatal(err)
+}
+defer client.Close()
 ```
 List of connection options:
 
@@ -80,43 +80,43 @@ if err != nil {
 ```
 #### Stream Events
 ```
-		eventStreamCh := make(chan *kubemq.Event, 1)
-		errStreamCh := make(chan error, 1)
-		go client.StreamEvents(ctx, eventStreamCh, errStreamCh)
-		event := client.E().SetId("some-event-id").
-			SetChannel("some_channel").
-			SetMetadata("some-metadata").
-			SetBody([]byte("hello kubemq - sending stream event"))
-		for {
-			select {
-			case err := <-errStreamCh:
-				log.Println(err)
-				return
-			case eventStreamCh <- event:
-				return
-			}
-		}
+eventStreamCh := make(chan *kubemq.Event, 1)
+errStreamCh := make(chan error, 1)
+go client.StreamEvents(ctx, eventStreamCh, errStreamCh)
+event := client.E().SetId("some-event-id").
+	SetChannel("some_channel").
+	SetMetadata("some-metadata").
+	SetBody([]byte("hello kubemq - sending stream event"))
+for {
+	select {
+	case err := <-errStreamCh:
+		log.Println(err)
+		return
+	case eventStreamCh <- event:
+		return
+	}
+}
 ```
 ### Receiving Events
 First you should subscribe to Events and get a channel:
 ```
-   	channelName := "testing_event_channel"
-   	errCh := make(chan error)
-   	eventsCh, err := client.SubscribeToEvents(ctx, channelName, "", errCh)
-   	if err != nil {
-   		log.Fatal(err)
-   	}
+channelName := "testing_event_channel"
+errCh := make(chan error)
+eventsCh, err := client.SubscribeToEvents(ctx, channelName, "", errCh)
+if err != nil {
+ 	log.Fatal(err)
+}
 ```
 Then you can loop over the channel of events:
 ```
-	for {
-		select {
-		case err := <-errCh:
-			log.Fatal(err)
-		case event := <-eventsCh:
-			log.Printf("Event Recevied:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.Id, event.Channel, event.Metadata, event.Body)
-		}
+for {
+	select {
+	case err := <-errCh:
+		log.Fatal(err)
+	case event := <-eventsCh:
+		log.Printf("Event Recevied:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.Id, event.Channel, event.Metadata, event.Body)
 	}
+}
 ```
 
 ## Events Store
@@ -124,49 +124,49 @@ Then you can loop over the channel of events:
 #### Single Event to Store
 ```
 //sending 10 single events to store
-	for i := 0; i < 10; i++ {
-		result, err := client.ES().
-			SetId(fmt.Sprintf("event-store-%d", i)).
-			SetChannel(channelName).
-			SetMetadata("some-metadata").
-			SetBody([]byte("hello kubemq - sending single event to store")).
-			Send(ctx)
-		if err != nil {
+for i := 0; i < 10; i++ {
+	result, err := client.ES().
+	    SetId(fmt.Sprintf("event-store-%d", i)).
+		SetChannel(channelName).
+		SetMetadata("some-metadata").
+		SetBody([]byte("hello kubemq - sending single event to store")).
+		Send(ctx)
+	if err != nil {
 			log.Fatal(err)
-		}
-		log.Printf("Sending event #%d: Result: %t", i, result.Sent)
 	}
+	log.Printf("Sending event #%d: Result: %t", i, result.Sent)
+}
 ```
 #### Stream Events Store
 ```
-		// sending addtional events to store
-		eventsStoreStreamCh := make(chan *kubemq.EventStore, 1)
-        eventsStoreSResultCh := make(chan *kubemq.EventStoreResult, 1)
-        errStreamCh := make(chan error, 1)
-        go client.StreamEventsStore(ctx, eventsStoreStreamCh, eventsStoreSResultCh, errStreamCh)
-        	for i := 0; i < 10; i++ {
-        		event := client.ES().
-        			SetId(fmt.Sprintf("event-store-%d", i)).
-        			SetChannel(channelName).
-        			SetMetadata("some-metadata").
-        			SetBody([]byte("hello kubemq - sending stream event to store"))
-        		eventsStoreStreamCh <- event
-        		select {
-        		case err := <-errStreamCh:
-        			log.Println(err)
-        			return
-        		case result := <-eventsStoreSResultCh:
-        			log.Printf("Sending event #%d: Result: %t", i, result.Sent)
-        		}
-        	}
+// sending addtional events to store
+eventsStoreStreamCh := make(chan *kubemq.EventStore, 1)
+eventsStoreSResultCh := make(chan *kubemq.EventStoreResult, 1)
+errStreamCh := make(chan error, 1)
+go client.StreamEventsStore(ctx, eventsStoreStreamCh, eventsStoreSResultCh, errStreamCh)
+for i := 0; i < 10; i++ {
+    event := client.ES().
+    SetId(fmt.Sprintf("event-store-%d", i)).
+    SetChannel(channelName).
+    SetMetadata("some-metadata").
+    SetBody([]byte("hello kubemq - sending stream event to store"))
+    eventsStoreStreamCh <- event
+    select {
+        case err := <-errStreamCh:
+    		log.Println(err)
+    		return
+   		case result := <-eventsStoreSResultCh:
+   			log.Printf("Sending event #%d: Result: %t", i, result.Sent)
+  		}
+}
 ```
 ### Receiving Events Store
 First you should subscribe to Events Store and get a channel:
 ```
-  eventsCh, err := client.SubscribeToEventsStore(ctx, channelName, "", errCh, kubemq.StartFromFirstEvent())
-  	if err != nil {
-  		log.Fatal(err)
-  	}
+eventsCh, err := client.SubscribeToEventsStore(ctx, channelName, "", errCh, kubemq.StartFromFirstEvent())
+if err != nil {
+ 	log.Fatal(err)
+ }
   
 ```
 #### Subscription Options
@@ -180,14 +180,14 @@ KubeMQ supports 6 type of subscriptions:
 
 Then you can loop over the channel of events:
 ```
-	for {
-		select {
-		case err := <-errCh:
-			log.Fatal(err)
-		case event := <-eventsCh:
-			log.Printf("Receive EventStore\nSequence: %d\nTime: %s\nBody: %s\n", event.Sequence, event.Timestamp, event.Body)
-		}
+for {
+	select {
+	case err := <-errCh:
+		log.Fatal(err)
+	case event := <-eventsCh:
+		log.Printf("Receive EventStore\nSequence: %d\nTime: %s\nBody: %s\n", event.Sequence, event.Timestamp, event.Body)
 	}
+}
 ```
 
 ## Commands
@@ -199,41 +199,40 @@ The response can be successful or not. This is the responsibility of the respond
 ### Sending Command Requests
 In this example, the responder should send his response withing one second, otherwise an error will be return as timout.
 ``` 
-    response, err := client.C().
-		SetId("some-command-id").
-		SetChannel(channelName).
-		SetMetadata("some-metadata").
-		SetBody([]byte("hello kubemq - sending command, please reply")).
-		SetTimeout(time.Second).
-		Send(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
+response, err := client.C().
+	SetId("some-command-id").
+	SetChannel(channelName).
+	SetMetadata("some-metadata").
+	SetBody([]byte("hello kubemq - sending command, please reply")).
+	SetTimeout(time.Second).
+	Send(ctx)
+if err != nil {
+	log.Fatal(err)
+}
 ```
 
 ### Receiving Commands Requests
 First get a channel of commands:
 ``` 
-    errCh := make(chan error)
-	commandsCh, err := client.SubscribeToCommands(ctx, channelName, "", errCh)
-	if err != nil {
-			log.Fatal(err)
-	}
+errCh := make(chan error)
+commandsCh, err := client.SubscribeToCommands(ctx, channelName, "", errCh)
+if err != nil {
+		log.Fatal(err)
+    }
 ```
 Then a loop over the channel will get the requests from the senders.
 ```	
-		for {
-			select {
-			case err := <-errCh:
-				log.Fatal(err)
-				return
-			case command := <-commandsCh:
-				log.Printf("Command Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", command.Id, command.Channel, command.Metadata, command.Body)
-				
-			case <-ctx.Done():
-				return
-			}
-		}
+for {
+	select {
+	case err := <-errCh:
+		log.Fatal(err)
+        return
+	case command := <-commandsCh:
+		log.Printf("Command Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", command.Id, command.Channel, command.Metadata, command.Body)
+	case <-ctx.Done():
+		return
+	}
+}
 ```
 
 ### Sending a Command Response
@@ -242,14 +241,14 @@ When sending response there are two important things to remember:
 - Set the ResponseTo string to the value of the request ResponseTo field
 
 ``` 
-    err := client.R().
-	SetRequestId(command.Id).
+err := client.R().
+    SetRequestId(command.Id).
 	SetResponseTo(command.ResponseTo).
 	SetExecutedAt(time.Now()).
 	Send(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
+if err != nil {
+	log.Fatal(err)
+}
 ```
 
 ## Queries
@@ -261,40 +260,40 @@ The response must includes metadata or body together with indication of successf
 ### Sending Query Requests
 In this example, the responder should send his response withing one second, otherwise an error will be return as timout.
 ``` 
-    response, err := client.Q().
-	    SetId("some-query-id").
-		SetChannel(channel).
-		SetMetadata("some-metadata").
-		SetBody([]byte("hello kubemq - sending a query, please reply")).
-		SetTimeout(time.Second).
-		Send(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
+response, err := client.Q().
+    SetId("some-query-id").
+    SetChannel(channel).
+	SetMetadata("some-metadata").
+	SetBody([]byte("hello kubemq - sending a query, please reply")).
+	SetTimeout(time.Second).
+	Send(ctx)
+if err != nil {
+	log.Fatal(err)
+}
 ```
 
 ### Receiving Query Requests
 First get a channel of queries:
 ``` 
-    errCh := make(chan error)
-	queriesCh, err := client.SubscribeToQueries(ctx, channelName, "", errCh)
-	if err != nil {
-			log.Fatal(err)
-	}
+errCh := make(chan error)
+queriesCh, err := client.SubscribeToQueries(ctx, channelName, "", errCh)
+if err != nil {
+	log.Fatal(err)
+}
 ```
 Then a loop over the channel will get the requests from the senders.
 ```	
-		for {
-			select {
-			case err := <-errCh:
-				log.Fatal(err)
-				return
-			case query := <-queriesCh:
-				log.Printf("Query Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", query.Id, query.Channel, query.Metadata, query.Body)
-			case <-ctx.Done():
-				return
-			}
-		}
+for {
+	select {
+	case err := <-errCh:
+		log.Fatal(err)
+		return
+	case query := <-queriesCh:
+		log.Printf("Query Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", query.Id, query.Channel, query.Metadata, query.Body)
+	case <-ctx.Done():
+		return
+   	}
+}
 ```
 
 ### Sending a Query Response
@@ -303,17 +302,17 @@ When sending response there are two important things to remember:
 - Set the ResponseTo string to the value of the request ResponseTo field
 
 ``` 
-  err := client.R().
-  	SetRequestId(query.Id).
+err := client.R().
+    SetRequestId(query.Id).
   	SetResponseTo(query.ResponseTo).
   	SetExecutedAt(time.Now()).
   	SetMetadata("this is a response").
   	SetBody([]byte("got your query, you are good to go")).
   	Send(ctx)
   	
-  	if err != nil {
-  			log.Fatal(err)
-  	}
+if err != nil {
+	log.Fatal(err)
+}
 ```
 
 ## Support
