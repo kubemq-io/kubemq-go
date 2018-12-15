@@ -118,3 +118,127 @@ Then you can loop over the channel of events:
 		}
 	}
 ```
+
+## Events Store
+### Sending Events Store
+#### Single Event to Store
+```
+//sending 10 single events to store
+	for i := 0; i < 10; i++ {
+		result, err := client.ES().
+			SetId(fmt.Sprintf("event-store-%d", i)).
+			SetChannel(channelName).
+			SetMetadata("some-metadata").
+			SetBody([]byte("hello kubemq - sending single event to store")).
+			Send(ctx)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Sending event #%d: Result: %t", i, result.Sent)
+	}
+```
+#### Stream Events Store
+```
+		// sending addtional events to store
+		eventsStoreStreamCh := make(chan *kubemq.EventStore, 1)
+        eventsStoreSResultCh := make(chan *kubemq.EventStoreResult, 1)
+        errStreamCh := make(chan error, 1)
+        go client.StreamEventsStore(ctx, eventsStoreStreamCh, eventsStoreSResultCh, errStreamCh)
+        	for i := 0; i < 10; i++ {
+        		event := client.ES().
+        			SetId(fmt.Sprintf("event-store-%d", i)).
+        			SetChannel(channelName).
+        			SetMetadata("some-metadata").
+        			SetBody([]byte("hello kubemq - sending stream event to store"))
+        		eventsStoreStreamCh <- event
+        		select {
+        		case err := <-errStreamCh:
+        			log.Println(err)
+        			return
+        		case result := <-eventsStoreSResultCh:
+        			log.Printf("Sending event #%d: Result: %t", i, result.Sent)
+        		}
+        	}
+```
+### Receiving Events Store
+First you should subscribe to Events Store and get a channel:
+```
+  eventsCh, err := client.SubscribeToEventsStore(ctx, channelName, "", errCh, kubemq.StartFromFirstEvent())
+  	if err != nil {
+  		log.Fatal(err)
+  	}
+  
+```
+Then you can loop over the channel of events:
+```
+	for {
+		select {
+		case err := <-errCh:
+			log.Fatal(err)
+		case event := <-eventsCh:
+			log.Printf("Receive EventStore\nSequence: %d\nTime: %s\nBody: %s\n", event.Sequence, event.Timestamp, event.Body)
+		}
+	}
+```
+
+## Commands
+### Concept
+Commands implements synchronous messaging pattern which the sender send a request and wait for specific amount of time to get a response.
+
+The response can be successful or not. This is the responsibility of the responder to return with the result of the command within the time the sender set in the request.
+
+### Sending Requests
+In this example, the responder should send his response withing one second, otherwise an error will be return as timout.
+``` 
+    response, err := client.C().
+		SetId("some-command-id").
+		SetChannel(channelName).
+		SetMetadata("some-metadata").
+		SetBody([]byte("hello kubemq - sending command, please reply")).
+		SetTimeout(time.Second).
+		Send(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+```
+
+### Receiving Requests
+First get a channel of commands:
+``` 
+    errCh := make(chan error)
+	commandsCh, err := client.SubscribeToCommands(ctx, channelName, "", errCh)
+	if err != nil {
+			log.Fatal(err)
+	}
+```
+Then a loop over the channel will get the requests from the senders.
+```	
+		for {
+			select {
+			case err := <-errCh:
+				log.Fatal(err)
+				return
+			case command := <-commandsCh:
+				log.Printf("Command Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", command.Id, command.Channel, command.Metadata, command.Body)
+				
+			case <-ctx.Done():
+				return
+			}
+		}
+```
+
+### Sending Response
+When sending response there are two important things to remember:
+- Set the relevant requestId which you response to
+- Set the ResponseTo string to the value of the request ResponseTo field
+
+``` 
+    err := client.R().
+	SetRequestId(command.Id).
+	SetResponseTo(command.ResponseTo).
+	SetExecutedAt(time.Now()).
+	Send(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+```
