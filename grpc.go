@@ -6,6 +6,7 @@ import (
 	"github.com/kubemq-io/kubemq-go/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"time"
 )
 
@@ -32,6 +33,8 @@ func newGRPCTransport(ctx context.Context, opts *Options) (Transport, error) {
 		conn:   nil,
 		client: nil,
 	}
+	connOptions = append(connOptions, grpc.WithUnaryInterceptor(g.SetUnaryInterceptor()), grpc.WithStreamInterceptor(g.SetStreamInterceptor()))
+
 	var err error
 	g.conn, err = grpc.DialContext(ctx, address, connOptions...)
 	if err != nil {
@@ -50,7 +53,25 @@ func newGRPCTransport(ctx context.Context, opts *Options) (Transport, error) {
 
 }
 
+func (g *gRPCTransport) SetUnaryInterceptor() grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if g.opts.token != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, kubeMQTokenHeader, g.opts.token)
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+func (g *gRPCTransport) SetStreamInterceptor() grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		if g.opts.token != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, kubeMQTokenHeader, g.opts.token)
+		}
+		return streamer(ctx, desc, cc, method, opts...)
+	}
+}
 func (g *gRPCTransport) SendEvent(ctx context.Context, event *Event) error {
+
 	result, err := g.client.SendEvent(ctx, &pb.Event{
 		EventID:  event.Id,
 		ClientID: event.ClientId,
