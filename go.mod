@@ -1,4 +1,4 @@
-module github.com/kubemq-io/go
+module github.com/kubemq-io/kubemq-go
 
 require (
 	github.com/gogo/protobuf v1.2.0
