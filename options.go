@@ -5,6 +5,9 @@ import "time"
 type Option interface {
 	apply(*Options)
 }
+type TransportType int
+
+const TransportTypeGRPC TransportType = iota
 
 type Options struct {
 	host                 string
@@ -17,6 +20,7 @@ type Options struct {
 	receiveBufferSize    int
 	defaultChannel       string
 	defaultCacheTTL      time.Duration
+	transportType        TransportType
 }
 
 type funcOptions struct {
@@ -86,6 +90,14 @@ func WithDefaultCacheTTL(ttl time.Duration) Option {
 		o.defaultCacheTTL = ttl
 	})
 }
+
+// WithDefaultCacheTTL - set default cache time to live for any query requests with any CacheKey set value
+func WithTransportType(transportType TransportType) Option {
+	return newFuncOption(func(o *Options) {
+		o.transportType = transportType
+	})
+}
+
 func GetDefaultOptions() *Options {
 	return &Options{
 		host:                 "localhost",
