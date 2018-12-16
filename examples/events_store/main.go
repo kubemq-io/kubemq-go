@@ -13,7 +13,8 @@ func main() {
 	defer cancel()
 	client, err := kubemq.NewClient(ctx,
 		kubemq.WithAddress("localhost", 50000),
-		kubemq.WithClientId("test-event-store-client-id"))
+		kubemq.WithClientId("test-event-store-client-id"),
+		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
 	if err != nil {
 		log.Fatal(err)
 	}

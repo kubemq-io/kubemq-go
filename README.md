@@ -2,7 +2,7 @@
 KubeMQ is an enterprise grade message broker for containers, designed for any type of workload and architecture running in Kubernetes.
 This library is Go implementation of KubeMQ client connection. 
 ### Installation
-`$ go get -u github.com/kubemq-io/go
+`$ go get -u github.com/kubemq-io/kubemq-go
 `
 ### Examples
 Please find usage examples on the examples folders.
