@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/kubemq-io/go"
+	"github.com/kubemq-io/kubemq-go"
 	"log"
 	"time"
 )

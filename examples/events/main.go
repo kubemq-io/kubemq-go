@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"github.com/kubemq-io/go"
+	"github.com/kubemq-io/kubemq-go"
 	"log"
 )
 
