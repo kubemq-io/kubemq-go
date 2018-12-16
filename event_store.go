@@ -2,7 +2,7 @@ package kubemq
 
 import (
 	"context"
-	"github.com/kubemq-io/go/pb"
+	"github.com/kubemq-io/kubemq-go/pb"
 	"time"
 )
 
