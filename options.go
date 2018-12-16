@@ -2,6 +2,8 @@ package kubemq
 
 import "time"
 
+const kubeMQTokenHeader = "X-Kubemq-Server-Token"
+
 type Option interface {
 	apply(*Options)
 }
@@ -91,7 +93,7 @@ func WithDefaultCacheTTL(ttl time.Duration) Option {
 	})
 }
 
-// WithDefaultCacheTTL - set default cache time to live for any query requests with any CacheKey set value
+// WithTransportType - set client transport type, currently GRPC or Rest
 func WithTransportType(transportType TransportType) Option {
 	return newFuncOption(func(o *Options) {
 		o.transportType = transportType

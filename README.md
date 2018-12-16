@@ -63,6 +63,7 @@ List of connection options:
 - WithReceiveBufferSize - set length of buffered channel to be set in all subscriptions
 - WithDefaultChannel - set default channel for any outbound requests
 - WithDefaultCacheTTL - set default cache time to live for any query requests with any CacheKey set value
+- WithTransportType - set client transport type, currently gRPC or Rest
 
 ## Events
 ### Sending Events
