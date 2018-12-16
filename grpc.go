@@ -3,7 +3,7 @@ package kubemq
 import (
 	"context"
 	"fmt"
-	"github.com/kubemq-io/go/pb"
+	"github.com/kubemq-io/kubemq-go/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"time"
