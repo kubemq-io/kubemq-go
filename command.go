@@ -2,18 +2,17 @@ package kubemq
 
 import (
 	"context"
-	"github.com/kubemq-io/go/pb"
 	"time"
 )
 
 type Command struct {
-	Id       string
-	Channel  string
-	Metadata string
-	Body     []byte
-	Timeout  time.Duration
-	ClientId string
-	client   pb.KubemqClient
+	Id        string
+	Channel   string
+	Metadata  string
+	Body      []byte
+	Timeout   time.Duration
+	ClientId  string
+	transport Transport
 }
 
 // SetId - set command requestId, otherwise new random uuid will be set
@@ -54,28 +53,7 @@ func (c *Command) SetTimeout(timeout time.Duration) *Command {
 
 // Send - sending command , waiting for response or timeout
 func (c *Command) Send(ctx context.Context) (*CommandResponse, error) {
-
-	grpcRequest := &pb.Request{
-		RequestID:       c.Id,
-		RequestTypeData: pb.Command,
-		ClientID:        c.ClientId,
-		Channel:         c.Channel,
-		Metadata:        c.Metadata,
-		Body:            c.Body,
-		Timeout:         int32(c.Timeout.Nanoseconds() / 1e6),
-	}
-	grpcResponse, err := c.client.SendRequest(ctx, grpcRequest)
-	if err != nil {
-		return nil, err
-	}
-	commandResponse := &CommandResponse{
-		CommandId:        grpcResponse.RequestID,
-		ResponseClientId: grpcResponse.ClientID,
-		Executed:         grpcResponse.Executed,
-		ExecutedAt:       time.Unix(grpcResponse.Timestamp, 0),
-		Error:            grpcResponse.Error,
-	}
-	return commandResponse, nil
+	return c.transport.SendCommand(ctx, c)
 }
 
 type CommandReceive struct {
