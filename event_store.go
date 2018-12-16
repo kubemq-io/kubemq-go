@@ -2,18 +2,17 @@ package kubemq
 
 import (
 	"context"
-	"fmt"
 	"github.com/kubemq-io/go/pb"
 	"time"
 )
 
 type EventStore struct {
-	Id       string
-	Channel  string
-	Metadata string
-	Body     []byte
-	ClientId string
-	client   pb.KubemqClient
+	Id        string
+	Channel   string
+	Metadata  string
+	Body      []byte
+	ClientId  string
+	transport Transport
 }
 
 // SetId - set event store id otherwise new random uuid will be set
@@ -47,26 +46,7 @@ func (es *EventStore) SetBody(body []byte) *EventStore {
 }
 
 func (es *EventStore) Send(ctx context.Context) (*EventStoreResult, error) {
-	result, err := es.client.SendEvent(ctx, &pb.Event{
-		EventID:  es.Id,
-		ClientID: es.ClientId,
-		Channel:  es.Channel,
-		Metadata: es.Metadata,
-		Body:     es.Body,
-		Store:    true,
-	})
-	if err != nil {
-		return nil, err
-	}
-	eventResult := &EventStoreResult{
-		Id:   result.EventID,
-		Sent: result.Sent,
-		Err:  nil,
-	}
-	if !result.Sent {
-		eventResult.Err = fmt.Errorf("%s", result.Error)
-	}
-	return eventResult, nil
+	return es.transport.SendEventStore(ctx, es)
 }
 
 type EventStoreResult struct {

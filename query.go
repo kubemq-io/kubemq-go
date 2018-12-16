@@ -2,20 +2,19 @@ package kubemq
 
 import (
 	"context"
-	"github.com/kubemq-io/go/pb"
 	"time"
 )
 
 type Query struct {
-	Id       string
-	Channel  string
-	Metadata string
-	Body     []byte
-	Timeout  time.Duration
-	ClientId string
-	CacheKey string
-	CacheTTL time.Duration
-	client   pb.KubemqClient
+	Id        string
+	Channel   string
+	Metadata  string
+	Body      []byte
+	Timeout   time.Duration
+	ClientId  string
+	CacheKey  string
+	CacheTTL  time.Duration
+	transport Transport
 }
 
 // SetId - set query requestId, otherwise new random uuid will be set
@@ -68,32 +67,7 @@ func (q *Query) SetCacheTTL(ttl time.Duration) *Query {
 
 // Send - sending query request , waiting for response or timeout
 func (q *Query) Send(ctx context.Context) (*QueryResponse, error) {
-	grpcRequest := &pb.Request{
-		RequestID:       q.Id,
-		RequestTypeData: pb.Query,
-		ClientID:        q.ClientId,
-		Channel:         q.Channel,
-		Metadata:        q.Metadata,
-		Body:            q.Body,
-		Timeout:         int32(q.Timeout.Nanoseconds() / 1e6),
-		CacheKey:        q.CacheKey,
-		CacheTTL:        int32(q.CacheTTL.Nanoseconds() / 1e6),
-	}
-	grpcResponse, err := q.client.SendRequest(ctx, grpcRequest)
-	if err != nil {
-		return nil, err
-	}
-	queryResponse := &QueryResponse{
-		QueryId:          grpcResponse.RequestID,
-		Executed:         grpcResponse.Executed,
-		ExecutedAt:       time.Unix(grpcResponse.Timestamp, 0),
-		Metadata:         grpcResponse.Metadata,
-		ResponseClientId: grpcResponse.ClientID,
-		Body:             grpcResponse.Body,
-		CacheHit:         grpcResponse.CacheHit,
-		Error:            grpcResponse.Error,
-	}
-	return queryResponse, nil
+	return q.transport.SendQuery(ctx, q)
 }
 
 type QueryReceive struct {
