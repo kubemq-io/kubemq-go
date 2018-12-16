@@ -2,7 +2,6 @@ package kubemq
 
 import (
 	"context"
-	"github.com/kubemq-io/go/pb"
 	"time"
 )
 
@@ -14,7 +13,7 @@ type Response struct {
 	ClientId   string
 	ExecutedAt time.Time
 	Err        error
-	client     pb.KubemqClient
+	transport  Transport
 }
 
 // SetId - set response corresponded requestId - mandatory
@@ -61,24 +60,5 @@ func (r *Response) SetExecutedAt(executedAt time.Time) *Response {
 
 // Send - sending response to command or query request
 func (r *Response) Send(ctx context.Context) error {
-
-	grpcResponse := &pb.Response{
-		ClientID:     r.ClientId,
-		RequestID:    r.RequestId,
-		ReplyChannel: r.ResponseTo,
-		Metadata:     r.Metadata,
-		Body:         r.Body,
-		Timestamp:    r.ExecutedAt.Unix(),
-		Executed:     true,
-		Error:        "",
-	}
-	if r.Err != nil {
-		grpcResponse.Executed = false
-		grpcResponse.Error = r.Err.Error()
-	}
-	_, err := r.client.SendResponse(ctx, grpcResponse)
-	if err != nil {
-		return err
-	}
-	return nil
+	return r.transport.SendResponse(ctx, r)
 }
