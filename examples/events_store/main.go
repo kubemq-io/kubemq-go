@@ -63,7 +63,11 @@ func main() {
 		log.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {
-		event := <-eventsCh
+		event,more := <-eventsCh
+		if !more {
+			log.Println("Receive EventStore done")
+			return
+		}
 		log.Printf("Receive EventStore\nSequence: %d\nTime: %s\nBody: %s\n", event.Sequence, event.Timestamp, event.Body)
 	}
 
