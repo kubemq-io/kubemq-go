@@ -115,7 +115,7 @@ for {
 	case err := <-errCh:
 		log.Fatal(err)
 	case event := <-eventsCh:
-		log.Printf("Event Recevied:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.Id, event.Channel, event.Metadata, event.Body)
+		log.Printf("Event Received:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.Id, event.Channel, event.Metadata, event.Body)
 	}
 }
 ```
@@ -229,7 +229,7 @@ for {
 		log.Fatal(err)
         return
 	case command := <-commandsCh:
-		log.Printf("Command Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", command.Id, command.Channel, command.Metadata, command.Body)
+		log.Printf("Command Received:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", command.Id, command.Channel, command.Metadata, command.Body)
 	case <-ctx.Done():
 		return
 	}
@@ -290,7 +290,7 @@ for {
 		log.Fatal(err)
 		return
 	case query := <-queriesCh:
-		log.Printf("Query Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", query.Id, query.Channel, query.Metadata, query.Body)
+		log.Printf("Query Received:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", query.Id, query.Channel, query.Metadata, query.Body)
 	case <-ctx.Done():
 		return
    	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/kubemq-io/kubemq-go"
 	"log"
 )
@@ -57,8 +58,12 @@ func main() {
 		case err := <-errCh:
 			log.Fatal(err)
 			return
-		case event := <-eventsCh:
-			log.Printf("Event Recevied:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.Id, event.Channel, event.Metadata, event.Body)
+		case event, more := <-eventsCh:
+			if !more {
+				fmt.Println("Event Received, done")
+				return
+			}
+			log.Printf("Event Received:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.Id, event.Channel, event.Metadata, event.Body)
 		}
 	}
 
