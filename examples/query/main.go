@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/kubemq-io/kubemq-go"
 	"log"
 	"time"
@@ -31,8 +32,12 @@ func main() {
 			case err := <-errCh:
 				log.Fatal(err)
 				return
-			case query := <-queriesCh:
-				log.Printf("Query Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", query.Id, query.Channel, query.Metadata, query.Body)
+			case query,more := <-queriesCh:
+				if !more {
+					fmt.Println("Query Received, done")
+					return
+				}
+				log.Printf("Query Received:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", query.Id, query.Channel, query.Metadata, query.Body)
 				err := client.R().
 					SetRequestId(query.Id).
 					SetResponseTo(query.ResponseTo).
@@ -61,6 +66,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Response Recevied:\nQueryID: %s\nExecutedAt:%s\nMetadat: %s\nBody: %s\n", response.QueryId, response.ExecutedAt, response.Metadata, response.Body)
+	log.Printf("Response Received:\nQueryID: %s\nExecutedAt:%s\nMetadat: %s\nBody: %s\n", response.QueryId, response.ExecutedAt, response.Metadata, response.Body)
 
 }
