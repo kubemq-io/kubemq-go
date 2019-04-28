@@ -31,8 +31,12 @@ func main() {
 			case err := <-errCh:
 				log.Fatal(err)
 				return
-			case command := <-commandsCh:
-				log.Printf("Command Recevied:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", command.Id, command.Channel, command.Metadata, command.Body)
+			case command, more := <-commandsCh:
+				if !more {
+					log.Println("Command Received , done")
+					return
+				}
+				log.Printf("Command Received:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", command.Id, command.Channel, command.Metadata, command.Body)
 				err := client.R().
 					SetRequestId(command.Id).
 					SetResponseTo(command.ResponseTo).
@@ -59,6 +63,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Response Recevied:\nCommandID: %s\nExecutedAt:%s\n", response.CommandId, response.ExecutedAt)
+	log.Printf("Response Received:\nCommandID: %s\nExecutedAt:%s\n", response.CommandId, response.ExecutedAt)
 
 }
