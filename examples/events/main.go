@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/kubemq-io/kubemq-go"
 	"log"
+	"time"
 )
 
 func main() {
@@ -19,11 +20,33 @@ func main() {
 	}
 	defer client.Close()
 	channelName := "testing_event_channel"
-	errCh := make(chan error)
-	eventsCh, err := client.SubscribeToEvents(ctx, channelName, "", errCh)
-	if err != nil {
-		log.Fatal(err)
-	}
+
+	go func() {
+		errCh := make(chan error)
+		eventsCh, err := client.SubscribeToEvents(ctx, channelName, "", errCh)
+		if err != nil {
+			log.Fatal(err)
+			return
+
+		}
+		for {
+			select {
+			case err := <-errCh:
+				log.Fatal(err)
+				return
+			case event, more := <-eventsCh:
+				if !more {
+					fmt.Println("Event Received, done")
+					return
+				}
+				log.Printf("Event Received:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.Id, event.Channel, event.Metadata, event.Body)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	// wait for receiver ready
+	time.Sleep(100 * time.Millisecond)
 	err = client.E().
 		SetId("some-id").
 		SetChannel(channelName).
@@ -33,38 +56,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	go func() {
-		eventStreamCh := make(chan *kubemq.Event, 1)
-		errStreamCh := make(chan error, 1)
-		go client.StreamEvents(ctx, eventStreamCh, errStreamCh)
-		event := client.E().SetId("some-event-id").
-			SetChannel(channelName).
-			SetMetadata("some-metadata").
-			SetBody([]byte("hello kubemq - sending stream event"))
-		for {
-			select {
-			case err := <-errStreamCh:
-				log.Println(err)
-				return
-			case eventStreamCh <- event:
-				return
-			}
-		}
-
-	}()
-
-	for {
-		select {
-		case err := <-errCh:
-			log.Fatal(err)
-			return
-		case event, more := <-eventsCh:
-			if !more {
-				fmt.Println("Event Received, done")
-				return
-			}
-			log.Printf("Event Received:\nEventID: %s\nChannel: %s\nMetadata: %s\nBody: %s\n", event.Id, event.Channel, event.Metadata, event.Body)
-		}
+	eventStreamCh := make(chan *kubemq.Event, 1)
+	errStreamCh := make(chan error, 1)
+	go client.StreamEvents(ctx, eventStreamCh, errStreamCh)
+	event := client.E().SetId("some-event-id").
+		SetChannel(channelName).
+		SetMetadata("some-metadata").
+		SetBody([]byte("hello kubemq - sending stream event"))
+	select {
+	case err := <-errStreamCh:
+		log.Println(err)
+	case eventStreamCh <- event:
 	}
-
+	time.Sleep(1 * time.Second)
 }
