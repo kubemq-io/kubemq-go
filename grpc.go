@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/kubemq-io/kubemq-go/pb"
+	"go.opencensus.io/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
@@ -286,6 +287,13 @@ func (g *gRPCTransport) SendCommand(ctx context.Context, command *Command) (*Com
 		Body:            command.Body,
 		Timeout:         int32(command.Timeout.Nanoseconds() / 1e6),
 	}
+	var span *trace.Span
+	if command.trace != nil {
+		ctx, span = trace.StartSpan(ctx, command.trace.Name, trace.WithSpanKind(trace.SpanKindClient))
+		defer span.End()
+		span.AddAttributes(command.trace.attributes...)
+	}
+
 	grpcResponse, err := g.client.SendRequest(ctx, grpcRequest)
 	if err != nil {
 		return nil, err
@@ -344,6 +352,13 @@ func (g *gRPCTransport) SendQuery(ctx context.Context, query *Query) (*QueryResp
 		CacheKey:        query.CacheKey,
 		CacheTTL:        int32(query.CacheTTL.Nanoseconds() / 1e6),
 	}
+	var span *trace.Span
+	if query.trace != nil {
+		ctx, span = trace.StartSpan(ctx, query.trace.Name, trace.WithSpanKind(trace.SpanKindClient))
+		defer span.End()
+		span.AddAttributes(query.trace.attributes...)
+	}
+
 	grpcResponse, err := g.client.SendRequest(ctx, grpcRequest)
 	if err != nil {
 		return nil, err
@@ -409,6 +424,13 @@ func (g *gRPCTransport) SendResponse(ctx context.Context, response *Response) er
 		grpcResponse.Executed = false
 		grpcResponse.Error = response.Err.Error()
 	}
+	var span *trace.Span
+	if response.trace != nil {
+		ctx, span = trace.StartSpan(ctx, response.trace.Name, trace.WithSpanKind(trace.SpanKindClient))
+		defer span.End()
+		span.AddAttributes(response.trace.attributes...)
+	}
+
 	_, err := g.client.SendResponse(ctx, grpcResponse)
 	if err != nil {
 		return err
