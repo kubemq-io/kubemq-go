@@ -15,6 +15,7 @@ type Query struct {
 	CacheKey  string
 	CacheTTL  time.Duration
 	transport Transport
+	trace     *Trace
 }
 
 // SetId - set query requestId, otherwise new random uuid will be set
@@ -68,6 +69,12 @@ func (q *Query) SetCacheTTL(ttl time.Duration) *Query {
 // Send - sending query request , waiting for response or timeout
 func (q *Query) Send(ctx context.Context) (*QueryResponse, error) {
 	return q.transport.SendQuery(ctx, q)
+}
+
+// AddTrace - add tracing support to query
+func (q *Query) AddTrace(name string) *Trace {
+	q.trace = CreateTrace(name)
+	return q.trace
 }
 
 type QueryReceive struct {
