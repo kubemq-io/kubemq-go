@@ -13,6 +13,7 @@ type Command struct {
 	Timeout   time.Duration
 	ClientId  string
 	transport Transport
+	trace     *Trace
 }
 
 // SetId - set command requestId, otherwise new random uuid will be set
@@ -49,6 +50,12 @@ func (c *Command) SetBody(body []byte) *Command {
 func (c *Command) SetTimeout(timeout time.Duration) *Command {
 	c.Timeout = timeout
 	return c
+}
+
+// AddTrace - add tracing support to command
+func (c *Command) AddTrace(name string) *Trace {
+	c.trace = CreateTrace(name)
+	return c.trace
 }
 
 // Send - sending command , waiting for response or timeout
