@@ -46,7 +46,10 @@ func (c *Client) Close() error {
 }
 
 // E - create an empty event object
-func (c *Client) E() *Event {
+func (c *Client) E(event ...*Event) *Event {
+	if len(event) > 0 {
+		return event[0]
+	}
 	return &Event{
 		Id:        generateUUID(),
 		Channel:   c.opts.defaultChannel,
@@ -58,7 +61,10 @@ func (c *Client) E() *Event {
 }
 
 // ES - create an empty event store object
-func (c *Client) ES() *EventStore {
+func (c *Client) ES(eventStore ...*EventStore) *EventStore {
+	if len(eventStore) > 0 {
+		return eventStore[0]
+	}
 	return &EventStore{
 		Id:        generateUUID(),
 		Channel:   c.opts.defaultChannel,
@@ -80,7 +86,10 @@ func (c *Client) StreamEventsStore(ctx context.Context, eventsCh chan *EventStor
 }
 
 // C - create an empty command object
-func (c *Client) C() *Command {
+func (c *Client) C(command ...*Command) *Command {
+	if len(command) > 0 {
+		return command[0]
+	}
 	return &Command{
 		Id:        generateUUID(),
 		Channel:   c.opts.defaultChannel,
@@ -93,7 +102,10 @@ func (c *Client) C() *Command {
 }
 
 // Q - create an empty query object
-func (c *Client) Q() *Query {
+func (c *Client) Q(query ...*Query) *Query {
+	if len(query) > 0 {
+		return query[0]
+	}
 	return &Query{
 		Id:        generateUUID(),
 		Channel:   c.opts.defaultChannel,
@@ -108,7 +120,10 @@ func (c *Client) Q() *Query {
 }
 
 // R - create an empty response object for command or query responses
-func (c *Client) R() *Response {
+func (c *Client) R(response ...*Response) *Response {
+	if len(response) > 0 {
+		return response[0]
+	}
 	return &Response{
 		RequestId:  "",
 		ResponseTo: "",

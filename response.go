@@ -14,6 +14,7 @@ type Response struct {
 	ExecutedAt time.Time
 	Err        error
 	transport  Transport
+	trace      *Trace
 }
 
 // SetId - set response corresponded requestId - mandatory
@@ -56,6 +57,12 @@ func (r *Response) SetError(err error) *Response {
 func (r *Response) SetExecutedAt(executedAt time.Time) *Response {
 	r.ExecutedAt = executedAt
 	return r
+}
+
+// AddTrace - add tracing support to response
+func (r *Response) AddTrace(name string) *Trace {
+	r.trace = CreateTrace(name)
+	return r.trace
 }
 
 // Send - sending response to command or query request
