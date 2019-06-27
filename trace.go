@@ -1,8 +1,9 @@
 package kubemq
 
 import (
-	"go.opencensus.io/trace"
 	"time"
+
+	"go.opencensus.io/trace"
 )
 
 type Trace struct {
@@ -15,7 +16,7 @@ func CreateTrace(name string) *Trace {
 	t := &Trace{
 		Name:       name,
 		attributes: nil,
-		annotation: nil,
+		annotation: trace.Annotation{},
 	}
 	return t
 }
