@@ -11,23 +11,33 @@ import (
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client, err := kubemq.NewClient(ctx,
+	sender, err := kubemq.NewClient(ctx,
 		kubemq.WithAddress("localhost", 50000),
-		kubemq.WithClientId("test-event-store-client-id"),
+		kubemq.WithClientId("test-event-store-sender-id"),
 		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Close()
+	defer sender.Close()
+
+	receiver, err := kubemq.NewClient(ctx,
+		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithClientId("test-event-store-sender-id"),
+		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer receiver.Close()
 	channelName := "testing_event_store-channelName"
 
 	//sending 10 single events to store
 	for i := 0; i < 10; i++ {
-		result, err := client.ES().
+		result, err := sender.ES().
 			SetId(fmt.Sprintf("event-store-%d", i)).
 			SetChannel(channelName).
 			SetMetadata("some-metadata").
 			SetBody([]byte("hello kubemq - sending single event to store")).
+			AddTag("seq",fmt.Sprintf("%d",i)).
 			Send(ctx)
 		if err != nil {
 			log.Fatal(err)
@@ -38,9 +48,9 @@ func main() {
 	eventsStoreStreamCh := make(chan *kubemq.EventStore, 1)
 	eventsStoreSResultCh := make(chan *kubemq.EventStoreResult, 1)
 	errStreamCh := make(chan error, 1)
-	go client.StreamEventsStore(ctx, eventsStoreStreamCh, eventsStoreSResultCh, errStreamCh)
+	go sender.StreamEventsStore(ctx, eventsStoreStreamCh, eventsStoreSResultCh, errStreamCh)
 	for i := 10; i < 20; i++ {
-		event := client.ES().
+		event := sender.ES().
 			SetId(fmt.Sprintf("event-store-%d", i)).
 			SetChannel(channelName).
 			SetMetadata("some-metadata").
@@ -58,7 +68,7 @@ func main() {
 	// some delay to retrieve event
 	time.Sleep(time.Second)
 	errCh := make(chan error)
-	eventsCh, err := client.SubscribeToEventsStore(ctx, channelName, "", errCh, kubemq.StartFromFirstEvent())
+	eventsCh, err := receiver.SubscribeToEventsStore(ctx, channelName, "", errCh, kubemq.StartFromFirstEvent())
 	if err != nil {
 		log.Fatal(err)
 	}

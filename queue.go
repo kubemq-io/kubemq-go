@@ -53,11 +53,12 @@ func (qm *QueueMessage) SetBody(body []byte) *QueueMessage {
 	return qm
 }
 
-// SetTags - set queue message tags map of strings,strings
-func (qm *QueueMessage) SetTags(tags map[string]string) *QueueMessage {
-	qm.Tags = tags
+// AddTag - add key value tags to query message
+func (qm *QueueMessage) AddTag(key,value string) *QueueMessage {
+	qm.Tags[key] = value
 	return qm
 }
+
 
 // SetPolicyExpirationSeconds - set queue message expiration seconds, 0 never expires
 func (qm *QueueMessage) SetPolicyExpirationSeconds(sec int) *QueueMessage {
