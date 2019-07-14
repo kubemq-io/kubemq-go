@@ -3,7 +3,7 @@ package kubemq
 import (
 	"context"
 
-	"github.com/kubemq-io/kubemq/pkg/pb"
+	"github.com/kubemq-io/kubemq-go/pb"
 )
 
 type Transport interface {
