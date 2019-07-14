@@ -2,9 +2,12 @@ package kubemq
 
 import (
 	"context"
+
+	"github.com/kubemq-io/kubemq/pkg/pb"
 )
 
 type Transport interface {
+	Ping(ctx context.Context) (*ServerInfo, error)
 	SendEvent(ctx context.Context, event *Event) error
 	StreamEvents(ctx context.Context, eventsCh chan *Event, errCh chan error)
 	SubscribeToEvents(ctx context.Context, channel, group string, errCh chan error) (<-chan *Event, error)
@@ -16,5 +19,10 @@ type Transport interface {
 	SendQuery(ctx context.Context, query *Query) (*QueryResponse, error)
 	SubscribeToQueries(ctx context.Context, channel, group string, errCh chan error) (<-chan *QueryReceive, error)
 	SendResponse(ctx context.Context, response *Response) error
+	SendQueueMessage(ctx context.Context, msg *QueueMessage) (*SendQueueMessageResult, error)
+	SendQueueMessages(ctx context.Context, msg []*QueueMessage) ([]*SendQueueMessageResult, error)
+	ReceiveQueueMessages(ctx context.Context, req *ReceiveQueueMessagesRequest) (*ReceiveQueueMessagesResponse, error)
+	AckAllQueueMessages(ctx context.Context, req *AckAllQueueMessagesRequest) (*AckAllQueueMessagesResponse, error)
+	StreamQueueMessage(ctx context.Context, reqCh chan *pb.StreamQueueMessagesRequest, resCh chan *pb.StreamQueueMessagesResponse, errCh chan error, doneCh chan bool)
 	Close() error
 }

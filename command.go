@@ -12,6 +12,7 @@ type Command struct {
 	Body      []byte
 	Timeout   time.Duration
 	ClientId  string
+	Tags      map[string]string
 	transport Transport
 	trace     *Trace
 }
@@ -52,6 +53,12 @@ func (c *Command) SetTimeout(timeout time.Duration) *Command {
 	return c
 }
 
+// SetTags - set tags for command
+func (c *Command) SetTags(tags map[string]string) *Command {
+	c.Tags = tags
+	return c
+}
+
 // AddTrace - add tracing support to command
 func (c *Command) AddTrace(name string) *Trace {
 	c.trace = CreateTrace(name)
@@ -60,6 +67,9 @@ func (c *Command) AddTrace(name string) *Trace {
 
 // Send - sending command , waiting for response or timeout
 func (c *Command) Send(ctx context.Context) (*CommandResponse, error) {
+	if c.transport == nil {
+		return nil, ErrNoTransportDefined
+	}
 	return c.transport.SendCommand(ctx, c)
 }
 
@@ -69,6 +79,7 @@ type CommandReceive struct {
 	Metadata   string
 	Body       []byte
 	ResponseTo string
+	Tags       map[string]string
 }
 
 type CommandResponse struct {
@@ -77,4 +88,5 @@ type CommandResponse struct {
 	Executed         bool
 	ExecutedAt       time.Time
 	Error            string
+	Tags             map[string]string
 }

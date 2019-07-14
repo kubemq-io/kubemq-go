@@ -10,6 +10,7 @@ type Event struct {
 	Metadata  string
 	Body      []byte
 	ClientId  string
+	Tags      map[string]string
 	transport Transport
 }
 
@@ -43,6 +44,15 @@ func (e *Event) SetBody(body []byte) *Event {
 	return e
 }
 
+// SetTags - set event tags
+func (e *Event) SetTags(tags map[string]string) *Event {
+	e.Tags = tags
+	return e
+}
+
 func (e *Event) Send(ctx context.Context) error {
+	if e.transport == nil {
+		return ErrNoTransportDefined
+	}
 	return e.transport.SendEvent(ctx, e)
 }
