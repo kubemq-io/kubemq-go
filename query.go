@@ -14,6 +14,7 @@ type Query struct {
 	ClientId  string
 	CacheKey  string
 	CacheTTL  time.Duration
+	Tags      map[string]string
 	transport Transport
 	trace     *Trace
 }
@@ -48,6 +49,12 @@ func (q *Query) SetBody(body []byte) *Query {
 	return q
 }
 
+// SetTags - set query tags
+func (q *Query) SetTags(tags map[string]string) *Query {
+	q.Tags = tags
+	return q
+}
+
 // SetTimeout - set timeout for query to be returned. if timeout expired , send query will result with an error
 func (q *Query) SetTimeout(timeout time.Duration) *Query {
 	q.Timeout = timeout
@@ -68,6 +75,9 @@ func (q *Query) SetCacheTTL(ttl time.Duration) *Query {
 
 // Send - sending query request , waiting for response or timeout
 func (q *Query) Send(ctx context.Context) (*QueryResponse, error) {
+	if q.transport == nil {
+		return nil, ErrNoTransportDefined
+	}
 	return q.transport.SendQuery(ctx, q)
 }
 
@@ -83,6 +93,7 @@ type QueryReceive struct {
 	Metadata   string
 	Body       []byte
 	ResponseTo string
+	Tags       map[string]string
 }
 
 type QueryResponse struct {
@@ -94,4 +105,5 @@ type QueryResponse struct {
 	Body             []byte
 	CacheHit         bool
 	Error            string
+	Tags             map[string]string
 }

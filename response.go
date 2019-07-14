@@ -13,6 +13,7 @@ type Response struct {
 	ClientId   string
 	ExecutedAt time.Time
 	Err        error
+	Tags       map[string]string
 	transport  Transport
 	trace      *Trace
 }
@@ -38,6 +39,12 @@ func (r *Response) SetMetadata(metadata string) *Response {
 // SetMetadata - set body response, for query only
 func (r *Response) SetBody(body []byte) *Response {
 	r.Body = body
+	return r
+}
+
+// SetTags - set response tags
+func (r *Response) SetTags(tags map[string]string) *Response {
+	r.Tags = tags
 	return r
 }
 
