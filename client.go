@@ -74,6 +74,7 @@ func (c *Client) E() *Event {
 		Metadata:  "",
 		Body:      nil,
 		ClientId:  c.opts.clientId,
+		Tags: map[string]string{},
 		transport: c.transport,
 	}
 }
@@ -91,6 +92,7 @@ func (c *Client) ES() *EventStore {
 		Metadata:  "",
 		Body:      nil,
 		ClientId:  c.opts.clientId,
+		Tags: map[string]string{},
 		transport: c.transport,
 	}
 }
@@ -119,7 +121,9 @@ func (c *Client) C() *Command {
 		Body:      nil,
 		Timeout:   defaultRequestTimeout,
 		ClientId:  c.opts.clientId,
+		Tags: map[string]string{},
 		transport: c.transport,
+		trace:     nil,
 	}
 }
 
@@ -139,7 +143,9 @@ func (c *Client) Q() *Query {
 		ClientId:  c.opts.clientId,
 		CacheKey:  "",
 		CacheTTL:  c.opts.defaultCacheTTL,
+		Tags: map[string]string{},
 		transport: c.transport,
+		trace:     nil,
 	}
 }
 
@@ -158,7 +164,9 @@ func (c *Client) R() *Response {
 		ClientId:   c.opts.clientId,
 		ExecutedAt: time.Time{},
 		Err:        nil,
+		Tags: map[string]string{},
 		transport:  c.transport,
+		trace:      nil,
 	}
 }
 
@@ -195,7 +203,7 @@ func (c *Client) QM() *QueueMessage {
 		Channel:    "",
 		Metadata:   "",
 		Body:       nil,
-		Tags:       nil,
+		Tags: map[string]string{},
 		Attributes: nil,
 		Policy: &QueueMessagePolicy{
 			ExpirationSeconds: 0,

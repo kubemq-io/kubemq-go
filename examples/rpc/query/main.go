@@ -11,10 +11,11 @@ import (
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	client, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithUri("http://localhost:9090"),
 		kubemq.WithClientId("test-query-client-id"),
-		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
+		kubemq.WithTransportType(kubemq.TransportTypeRest))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -25,6 +26,7 @@ func main() {
 		errCh := make(chan error)
 		queriesCh, err := client.SubscribeToQueries(ctx, channel, "", errCh)
 		if err != nil {
+
 			log.Fatal(err)
 		}
 		for {
@@ -38,7 +40,7 @@ func main() {
 					return
 				}
 				log.Printf("Query Received:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", query.Id, query.Channel, query.Metadata, query.Body)
-				err := client.R().
+				err := client.NewResponse().
 					SetRequestId(query.Id).
 					SetResponseTo(query.ResponseTo).
 					SetExecutedAt(time.Now()).
@@ -55,13 +57,13 @@ func main() {
 
 	}()
 	// give some time to connect a receiver
-	time.Sleep(time.Second)
-	response, err := client.Q().
+	time.Sleep(1 *time.Second)
+	response, err := client.NewQuery().
 		SetId("some-query-id").
 		SetChannel(channel).
 		SetMetadata("some-metadata").
 		SetBody([]byte("hello kubemq - sending a query, please reply")).
-		SetTimeout(time.Second).
+		SetTimeout(1 *time.Second).
 		Send(ctx)
 	if err != nil {
 		log.Fatal(err)

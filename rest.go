@@ -14,15 +14,14 @@ import (
 )
 
 type restResponse struct {
-	Node        string          `json:"node"`
-	Error       bool            `json:"error"`
-	ErrorString string          `json:"error_string"`
+	IsError     bool            `json:"is_error"`
+	Message string          `json:"message"`
 	Data        json.RawMessage `json:"data"`
 }
 
 func (res *restResponse) unmarshal(v interface{}) error {
-	if res.Error {
-		return errors.New(res.ErrorString)
+	if res.IsError {
+		return errors.New(res.Message)
 	}
 	if v == nil {
 		return nil
@@ -52,11 +51,15 @@ func newWebsocketConn(ctx context.Context, uri string, readCh chan string, ready
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
-				errCh <- err
 				return
-			} else {
-				readCh <- string(message)
 			}
+			select {
+			case readCh <- string(message):
+
+			case <-ctx.Done():
+				return
+			}
+
 		}
 	}()
 	return c, nil
@@ -81,7 +84,6 @@ func newBiDirectionalWebsocketConn(ctx context.Context, uri string, readCh chan 
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
-				errCh <- err
 				return
 			}
 			select {
@@ -100,7 +102,6 @@ func newBiDirectionalWebsocketConn(ctx context.Context, uri string, readCh chan 
 			case message := <-writeCh:
 				err := c.WriteMessage(1, message)
 				if err != nil {
-					errCh <- err
 					return
 				}
 			case <-ctx.Done():
@@ -172,7 +173,47 @@ func (rt *restTransport) SendEvent(ctx context.Context, event *Event) error {
 }
 
 func (rt *restTransport) StreamEvents(ctx context.Context, eventsCh chan *Event, errCh chan error) {
-	panic("implement me")
+	uri := fmt.Sprintf("%s/send/stream", rt.wsAddress)
+	readCh := make(chan string)
+	writeCh := make(chan []byte)
+	ready := make(chan struct{}, 1)
+	wsErrCh := make(chan error, 1)
+	newCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	conn, err := newBiDirectionalWebsocketConn(newCtx, uri, readCh, writeCh, ready, wsErrCh)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	rt.wsConn = conn
+	<-ready
+
+	go func() {
+		for {
+			select {
+			case  <-readCh:
+
+			case err := <-wsErrCh:
+				errCh <- err
+				return
+			case <-newCtx.Done():
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case event := <-eventsCh:
+			data, _ := json.Marshal(event)
+			writeCh <- data
+		case err := <-wsErrCh:
+			errCh <- err
+			return
+		case <-newCtx.Done():
+			return
+		}
+	}
 }
 
 func (rt *restTransport) SubscribeToEvents(ctx context.Context, channel, group string, errCh chan error) (<-chan *Event, error) {
@@ -241,12 +282,59 @@ func (rt *restTransport) SendEventStore(ctx context.Context, eventStore *EventSt
 }
 
 func (rt *restTransport) StreamEventsStore(ctx context.Context, eventsCh chan *EventStore, eventsResultCh chan *EventStoreResult, errCh chan error) {
-	panic("implement me")
+	uri := fmt.Sprintf("%s/send/stream", rt.wsAddress)
+	readCh := make(chan string)
+	writeCh := make(chan []byte)
+	ready := make(chan struct{}, 1)
+	wsErrCh := make(chan error, 1)
+	newCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	conn, err := newBiDirectionalWebsocketConn(newCtx, uri, readCh, writeCh, ready, wsErrCh)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	rt.wsConn = conn
+	<-ready
+
+	go func() {
+		for {
+			select {
+			case  pbMsg:=<-readCh:
+				result:=&EventStoreResult{}
+				err := json.Unmarshal([]byte(pbMsg), result)
+				if err != nil {
+					errCh <- err
+					return
+				}
+			case err := <-wsErrCh:
+				errCh <- err
+				return
+			case <-newCtx.Done():
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case event := <-eventsCh:
+			data, _ := json.Marshal(event)
+			writeCh <- data
+		case err := <-wsErrCh:
+			errCh <- err
+			return
+		case <-newCtx.Done():
+			return
+		}
+	}
 }
 
 func (rt *restTransport) SubscribeToEventsStore(ctx context.Context, channel, group string, errCh chan error, opt SubscriptionOption) (<-chan *EventStoreReceive, error) {
 	eventsCh := make(chan *EventStoreReceive, rt.opts.receiveBufferSize)
-	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s&events_store_type_data=%d&events_store_type_value=%d", rt.wsAddress, rt.id, channel, group, "events_store", 2, 0)
+	subOption := subscriptionOption{}
+	opt.apply(&subOption)
+	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s&events_store_type_data=%d&events_store_type_value=%d", rt.wsAddress, rt.id, channel, group, "persistence", subOption.kind , subOption.value)
 	rxChan := make(chan string)
 	ready := make(chan struct{}, 1)
 	wsErrCh := make(chan error, 1)
@@ -297,7 +385,7 @@ func (rt *restTransport) SendCommand(ctx context.Context, command *Command) (*Co
 		Metadata:             command.Metadata,
 		Body:                 command.Body,
 		ReplyChannel:         "",
-		Timeout:              int32(command.Timeout.Seconds() / 1e3),
+		Timeout:              int32(command.Timeout.Seconds() * 1e3),
 		CacheKey:             "",
 		CacheTTL:             0,
 		Span:                 nil,
@@ -369,7 +457,7 @@ func (rt *restTransport) SendQuery(ctx context.Context, query *Query) (*QueryRes
 		Metadata:        query.Metadata,
 		Body:            query.Body,
 		ReplyChannel:    "",
-		Timeout:         int32(query.Timeout.Seconds() / 1e3),
+		Timeout:         int32(query.Timeout.Seconds() * 1e3),
 		CacheKey:        "",
 		CacheTTL:        0,
 		Span:            nil,
@@ -443,7 +531,7 @@ func (rt *restTransport) SendResponse(ctx context.Context, response *Response) e
 		Span:         nil,
 		Tags:         response.Tags,
 	}
-	uri := fmt.Sprintf("%s/send/request", rt.restAddress)
+	uri := fmt.Sprintf("%s/send/response", rt.restAddress)
 	_, err := resty.R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return err
