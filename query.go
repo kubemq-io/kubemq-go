@@ -49,9 +49,9 @@ func (q *Query) SetBody(body []byte) *Query {
 	return q
 }
 
-// SetTags - set query tags
-func (q *Query) SetTags(tags map[string]string) *Query {
-	q.Tags = tags
+// AddTag - add key value tags to query message
+func (q *Query) AddTag(key,value string) *Query {
+	q.Tags[key] = value
 	return q
 }
 
