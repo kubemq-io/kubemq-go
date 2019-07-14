@@ -2,8 +2,9 @@ package kubemq
 
 import (
 	"context"
-	"github.com/kubemq-io/kubemq-go/pb"
 	"time"
+
+	"github.com/kubemq-io/kubemq-go/pb"
 )
 
 type EventStore struct {
@@ -12,6 +13,7 @@ type EventStore struct {
 	Metadata  string
 	Body      []byte
 	ClientId  string
+	Tags      map[string]string
 	transport Transport
 }
 
@@ -45,7 +47,17 @@ func (es *EventStore) SetBody(body []byte) *EventStore {
 	return es
 }
 
+// SetTags - set event store tags
+func (es *EventStore) SetTags(tags map[string]string) *EventStore {
+	es.Tags = tags
+	return es
+}
+
+// Send - sending events store message
 func (es *EventStore) Send(ctx context.Context) (*EventStoreResult, error) {
+	if es.transport == nil {
+		return nil, ErrNoTransportDefined
+	}
 	return es.transport.SendEventStore(ctx, es)
 }
 
@@ -63,6 +75,7 @@ type EventStoreReceive struct {
 	Metadata  string
 	Body      []byte
 	ClientId  string
+	Tags      map[string]string
 }
 
 type SubscriptionOption interface {

@@ -1,6 +1,9 @@
 package kubemq
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 const kubeMQTokenHeader = "X-Kubemq-Server-Token"
 
@@ -9,7 +12,10 @@ type Option interface {
 }
 type TransportType int
 
-const TransportTypeGRPC TransportType = iota
+const (
+	TransportTypeGRPC TransportType = iota
+	TransportTypeRest
+)
 
 type Options struct {
 	host                 string
@@ -23,6 +29,8 @@ type Options struct {
 	defaultChannel       string
 	defaultCacheTTL      time.Duration
 	transportType        TransportType
+	restUri              string
+	webSocketUri         string
 }
 
 type funcOptions struct {
@@ -44,6 +52,15 @@ func WithAddress(host string, port int) Option {
 	return newFuncOption(func(o *Options) {
 		o.host = host
 		o.port = port
+
+	})
+}
+
+// WithUriAddress - set uri address of KubeMQ server
+func WithUri(uri string) Option {
+	return newFuncOption(func(o *Options) {
+		o.restUri = uri
+		o.webSocketUri = strings.Replace(uri, "http", "ws", 1)
 	})
 }
 
