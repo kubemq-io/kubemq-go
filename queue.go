@@ -66,8 +66,8 @@ func (qm *QueueMessage) SetPolicyExpirationSeconds(sec int) *QueueMessage {
 	return qm
 }
 
-// SetPolicySeconds - set queue message delivery delay in seconds, 0 , immediate delivery
-func (qm *QueueMessage) SetPolicySeconds(sec int) *QueueMessage {
+// SetPolicyDelaySeconds - set queue message delivery delay in seconds, 0 , immediate delivery
+func (qm *QueueMessage) SetPolicyDelaySeconds(sec int) *QueueMessage {
 	qm.Policy.DelaySeconds = int32(sec)
 	return qm
 }
