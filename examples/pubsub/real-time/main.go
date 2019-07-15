@@ -18,7 +18,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer sender.Close()
-	receiverA,err:=kubemq.NewClient(ctx,
+	receiverA, err := kubemq.NewClient(ctx,
 		kubemq.WithUri("http://localhost:9090"),
 		kubemq.WithClientId("test-event-rest-client"),
 		kubemq.WithTransportType(kubemq.TransportTypeRest))
@@ -28,7 +28,7 @@ func main() {
 
 	defer receiverA.Close()
 
-	receiverB,err:=kubemq.NewClient(ctx,
+	receiverB, err := kubemq.NewClient(ctx,
 		kubemq.WithUri("http://localhost:9090"),
 		kubemq.WithClientId("test-event-rest-client"),
 		kubemq.WithTransportType(kubemq.TransportTypeRest))

@@ -20,17 +20,16 @@ func main() {
 	defer client.Close()
 	channel := "testing_queue_channel"
 
-	sendResult,err:= client.NewQueueMessage().
+	sendResult, err := client.NewQueueMessage().
 		SetChannel(channel).
-		SetBody([]byte("some-simple-queue-message")).
+		SetBody([]byte("some-simple_queue-queue-message")).
 		Send(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Send to Queue Result: MessageID:%s,Sent At: %s\n", sendResult.MessageID,time.Unix(0,sendResult.SentAt).String())
+	log.Printf("Send to Queue Result: MessageID:%s,Sent At: %s\n", sendResult.MessageID, time.Unix(0, sendResult.SentAt).String())
 
-
-	receiveResult,err:= client.NewReceiveQueueMessagesRequest().
+	receiveResult, err := client.NewReceiveQueueMessagesRequest().
 		SetChannel(channel).
 		SetMaxNumberOfMessages(1).
 		SetWaitTimeSeconds(1).
@@ -38,11 +37,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Received %d Messages:\n",receiveResult.MessagesReceived)
+	log.Printf("Received %d Messages:\n", receiveResult.MessagesReceived)
 	for _, msg := range receiveResult.Messages {
-		log.Printf("MessageID: %s, Body: %s",msg.Id,string(msg.Body))
+		log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
 	}
-
-
 
 }
