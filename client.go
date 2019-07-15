@@ -13,7 +13,8 @@ const (
 )
 
 var (
-	ErrNoTransportDefined = errors.New("no transport layer defined, create object with client instance")
+	ErrNoTransportDefined    = errors.New("no transport layer defined, create object with client instance")
+	ErrNoTransportCpnnection = errors.New("no transport layer established, aborting")
 )
 
 type ServerInfo struct {
@@ -43,7 +44,11 @@ func NewClient(ctx context.Context, op ...Option) (*Client, error) {
 	client := &Client{
 		opts: opts,
 	}
-	var err error
+
+	err := opts.Validate()
+	if err != nil {
+		return nil, err
+	}
 	switch opts.transportType {
 	case TransportTypeGRPC:
 		client.transport, client.ServerInfo, err = newGRPCTransport(ctx, opts)
@@ -53,12 +58,18 @@ func NewClient(ctx context.Context, op ...Option) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	if client.transport == nil {
+		return nil, ErrNoTransportCpnnection
+	}
 	return client, nil
 }
 
 // Close - closing client connection. any on going transactions will be aborted
 func (c *Client) Close() error {
-	return c.transport.Close()
+	if c.transport != nil {
+		return c.transport.Close()
+	}
+	return nil
 }
 
 // NewEvent - create an empty event
@@ -74,7 +85,7 @@ func (c *Client) E() *Event {
 		Metadata:  "",
 		Body:      nil,
 		ClientId:  c.opts.clientId,
-		Tags: map[string]string{},
+		Tags:      map[string]string{},
 		transport: c.transport,
 	}
 }
@@ -92,7 +103,7 @@ func (c *Client) ES() *EventStore {
 		Metadata:  "",
 		Body:      nil,
 		ClientId:  c.opts.clientId,
-		Tags: map[string]string{},
+		Tags:      map[string]string{},
 		transport: c.transport,
 	}
 }
@@ -121,7 +132,7 @@ func (c *Client) C() *Command {
 		Body:      nil,
 		Timeout:   defaultRequestTimeout,
 		ClientId:  c.opts.clientId,
-		Tags: map[string]string{},
+		Tags:      map[string]string{},
 		transport: c.transport,
 		trace:     nil,
 	}
@@ -143,7 +154,7 @@ func (c *Client) Q() *Query {
 		ClientId:  c.opts.clientId,
 		CacheKey:  "",
 		CacheTTL:  c.opts.defaultCacheTTL,
-		Tags: map[string]string{},
+		Tags:      map[string]string{},
 		transport: c.transport,
 		trace:     nil,
 	}
@@ -164,7 +175,7 @@ func (c *Client) R() *Response {
 		ClientId:   c.opts.clientId,
 		ExecutedAt: time.Time{},
 		Err:        nil,
-		Tags: map[string]string{},
+		Tags:       map[string]string{},
 		transport:  c.transport,
 		trace:      nil,
 	}
@@ -203,7 +214,7 @@ func (c *Client) QM() *QueueMessage {
 		Channel:    "",
 		Metadata:   "",
 		Body:       nil,
-		Tags: map[string]string{},
+		Tags:       map[string]string{},
 		Attributes: nil,
 		Policy: &QueueMessagePolicy{
 			ExpirationSeconds: 0,

@@ -20,6 +20,7 @@ type QueueMessage struct {
 	Policy     *QueueMessagePolicy
 	transport  Transport
 	trace      *Trace
+	stream     *StreamQueueMessage
 }
 
 // SetId - set queue message id, otherwise new random uuid will be set
@@ -54,11 +55,10 @@ func (qm *QueueMessage) SetBody(body []byte) *QueueMessage {
 }
 
 // AddTag - add key value tags to query message
-func (qm *QueueMessage) AddTag(key,value string) *QueueMessage {
+func (qm *QueueMessage) AddTag(key, value string) *QueueMessage {
 	qm.Tags[key] = value
 	return qm
 }
-
 
 // SetPolicyExpirationSeconds - set queue message expiration seconds, 0 never expires
 func (qm *QueueMessage) SetPolicyExpirationSeconds(sec int) *QueueMessage {
@@ -86,6 +86,9 @@ func (qm *QueueMessage) SetPolicyMaxReceiveQueue(channel string) *QueueMessage {
 
 // Send - sending queue message request , waiting for response or timeout
 func (qm *QueueMessage) Send(ctx context.Context) (*SendQueueMessageResult, error) {
+	if qm.transport == nil {
+		return nil, ErrNoTransportDefined
+	}
 	return qm.transport.SendQueueMessage(ctx, qm)
 }
 
@@ -93,6 +96,40 @@ func (qm *QueueMessage) Send(ctx context.Context) (*SendQueueMessageResult, erro
 func (qm *QueueMessage) AddTrace(name string) *Trace {
 	qm.trace = CreateTrace(name)
 	return qm.trace
+}
+
+// ack - sending ack queue message in stream queue message mode
+func (qm *QueueMessage) Ack() error {
+	if qm.stream != nil {
+		return qm.stream.ack()
+	}
+	return errors.New("non-stream mode queue message ")
+}
+
+// reject - sending reject queue message in stream queue message mode
+func (qm *QueueMessage) Reject() error {
+	if qm.stream != nil {
+		return qm.stream.reject()
+	}
+	return errors.New("non-stream mode queue message ")
+}
+
+// ExtendVisibility - extend the visibility time for the current receive message
+func (qm *QueueMessage) ExtendVisibility(value int32) error {
+
+	if qm.stream != nil {
+		return qm.stream.extendVisibility(value)
+	}
+	return errors.New("non-stream mode queue message ")
+}
+
+// Resend - sending resend
+func (qm *QueueMessage) Resend(channel string) error {
+	if qm.stream != nil {
+		return qm.stream.resend(channel)
+	}
+
+	return errors.New("non-stream mode queue message ")
 }
 
 type QueueMessages struct {
@@ -286,7 +323,7 @@ type StreamQueueMessage struct {
 	mu                sync.Mutex
 }
 
-// SetId - set stream queue message request id, otherwise new random uuid will be set
+// SetId - set streamqueue message request id, otherwise new random uuid will be set
 func (req *StreamQueueMessage) SetId(id string) *StreamQueueMessage {
 	req.RequestID = id
 	return req
@@ -310,10 +347,17 @@ func (req *StreamQueueMessage) AddTrace(name string) *Trace {
 	return req.trace
 }
 
-// Receive - receive queue messages request , waiting for response or timeout
-func (req *StreamQueueMessage) Receive(ctx context.Context, visibility, wait int32) (*QueueMessage, error) {
+// Close - end stream of queue messages
+func (req *StreamQueueMessage) Close() {
+	req.isCompleted = true
+	req.cancel()
+	return
+}
+
+// Next - receive queue messages request , waiting for response or timeout
+func (req *StreamQueueMessage) Next(ctx context.Context, visibility, wait int32) (*QueueMessage, error) {
 	req.mu.Lock()
-	defer req.mu.Unlock()
+
 	if req.transport == nil {
 		return nil, ErrNoTransportDefined
 	}
@@ -334,8 +378,10 @@ func (req *StreamQueueMessage) Receive(ctx context.Context, visibility, wait int
 				req.isCompleted = true
 				req.msg = nil
 				req.cancel()
+				req.mu.Unlock()
 				return
 			case <-req.ctx.Done():
+				req.mu.Unlock()
 				return
 			}
 		}
@@ -386,6 +432,7 @@ func (req *StreamQueueMessage) Receive(ctx context.Context, visibility, wait int
 				MaxReceiveCount:   resMsg.Policy.MaxReceiveCount,
 				MaxReceiveQueue:   resMsg.Policy.MaxReceiveQueue,
 			},
+			stream: req,
 		}
 
 		return req.msg, nil
@@ -397,10 +444,11 @@ func (req *StreamQueueMessage) Receive(ctx context.Context, visibility, wait int
 
 }
 
-// Ack - ack the received queue messages waiting for response or timeout
-func (req *StreamQueueMessage) Ack() error {
+// ack - ack the received queue messages waiting for response or timeout
+func (req *StreamQueueMessage) ack() error {
+
 	if req.msg == nil {
-		return errors.New("no active message to ack, call Receive first")
+		return errors.New("no active message to ack, call Next first")
 	}
 
 	ackRequest := &pb.StreamQueueMessagesRequest{
@@ -427,10 +475,11 @@ func (req *StreamQueueMessage) Ack() error {
 	return nil
 }
 
-// Reject - reject the received queue messages waiting for response or timeout
-func (req *StreamQueueMessage) Reject() error {
+// reject - reject the received queue messages waiting for response or timeout
+func (req *StreamQueueMessage) reject() error {
+
 	if req.msg == nil {
-		return errors.New("no active message to reject, call Receive first")
+		return errors.New("no active message to reject, call Next first")
 	}
 
 	rejRequest := &pb.StreamQueueMessagesRequest{
@@ -448,6 +497,8 @@ func (req *StreamQueueMessage) Reject() error {
 	case getResponse := <-req.resCh:
 		if getResponse.IsError {
 			return errors.New(getResponse.Error)
+		} else {
+
 		}
 	case err := <-req.errCh:
 		return err
@@ -457,10 +508,11 @@ func (req *StreamQueueMessage) Reject() error {
 	return nil
 }
 
-// ExtendVisibility - extend the visibility time for the current receive message
-func (req *StreamQueueMessage) ExtendVisibility(value int32) error {
+// extendVisibility - extend the visibility time for the current receive message
+func (req *StreamQueueMessage) extendVisibility(value int32) error {
+
 	if req.msg == nil {
-		return errors.New("no active message to extend visibility, call Receive first")
+		return errors.New("no active message to extend visibility, call Next first")
 	}
 
 	extRequest := &pb.StreamQueueMessagesRequest{
@@ -487,10 +539,11 @@ func (req *StreamQueueMessage) ExtendVisibility(value int32) error {
 	return nil
 }
 
-// Resend - resend the current received message to a new channel and ack the current message
-func (req *StreamQueueMessage) Resend(channel string) error {
+// resend - resend the current received message to a new channel and ack the current message
+func (req *StreamQueueMessage) resend(channel string) error {
+
 	if req.msg == nil {
-		return errors.New("no active message to resend, call Receive first")
+		return errors.New("no active message to resend, call Next first")
 	}
 
 	extRequest := &pb.StreamQueueMessagesRequest{
@@ -519,8 +572,9 @@ func (req *StreamQueueMessage) Resend(channel string) error {
 
 // ResendWithNewMessage - resend the current received message to a new channel
 func (req *StreamQueueMessage) ResendWithNewMessage(msg *QueueMessage) error {
+
 	if req.msg == nil {
-		return errors.New("no active message to resend, call Receive first")
+		return errors.New("no active message to resend, call Next first")
 	}
 	extRequest := &pb.StreamQueueMessagesRequest{
 		RequestID:             req.RequestID,

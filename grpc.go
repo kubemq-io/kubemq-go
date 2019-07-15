@@ -56,7 +56,7 @@ func newGRPCTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 
 	si, err := g.Ping(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, &ServerInfo{}, nil
 	}
 
 	return g, si, nil

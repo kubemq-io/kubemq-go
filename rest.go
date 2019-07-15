@@ -14,9 +14,9 @@ import (
 )
 
 type restResponse struct {
-	IsError     bool            `json:"is_error"`
+	IsError bool            `json:"is_error"`
 	Message string          `json:"message"`
-	Data        json.RawMessage `json:"data"`
+	Data    json.RawMessage `json:"data"`
 }
 
 func (res *restResponse) unmarshal(v interface{}) error {
@@ -131,7 +131,7 @@ func newRestTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 	}
 	si, err := rt.Ping(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, &ServerInfo{}, nil
 	}
 	return rt, si, nil
 }
@@ -191,7 +191,7 @@ func (rt *restTransport) StreamEvents(ctx context.Context, eventsCh chan *Event,
 	go func() {
 		for {
 			select {
-			case  <-readCh:
+			case <-readCh:
 
 			case err := <-wsErrCh:
 				errCh <- err
@@ -300,8 +300,8 @@ func (rt *restTransport) StreamEventsStore(ctx context.Context, eventsCh chan *E
 	go func() {
 		for {
 			select {
-			case  pbMsg:=<-readCh:
-				result:=&EventStoreResult{}
+			case pbMsg := <-readCh:
+				result := &EventStoreResult{}
 				err := json.Unmarshal([]byte(pbMsg), result)
 				if err != nil {
 					errCh <- err
@@ -334,7 +334,7 @@ func (rt *restTransport) SubscribeToEventsStore(ctx context.Context, channel, gr
 	eventsCh := make(chan *EventStoreReceive, rt.opts.receiveBufferSize)
 	subOption := subscriptionOption{}
 	opt.apply(&subOption)
-	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s&events_store_type_data=%d&events_store_type_value=%d", rt.wsAddress, rt.id, channel, group, "persistence", subOption.kind , subOption.value)
+	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s&events_store_type_data=%d&events_store_type_value=%d", rt.wsAddress, rt.id, channel, group, "persistence", subOption.kind, subOption.value)
 	rxChan := make(chan string)
 	ready := make(chan struct{}, 1)
 	wsErrCh := make(chan error, 1)

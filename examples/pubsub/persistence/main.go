@@ -37,7 +37,7 @@ func main() {
 			SetChannel(channelName).
 			SetMetadata("some-metadata").
 			SetBody([]byte("hello kubemq - sending single event to store")).
-			AddTag("seq",fmt.Sprintf("%d",i)).
+			AddTag("seq", fmt.Sprintf("%d", i)).
 			Send(ctx)
 		if err != nil {
 			log.Fatal(err)
@@ -73,12 +73,12 @@ func main() {
 		log.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {
-		event,more := <-eventsCh
+		event, more := <-eventsCh
 		if !more {
-			log.Println("Receive EventStore done")
+			log.Println("Next EventStore done")
 			return
 		}
-		log.Printf("Receive EventStore\nSequence: %d\nTime: %s\nBody: %s\n", event.Sequence, event.Timestamp, event.Body)
+		log.Printf("Next EventStore\nSequence: %d\nTime: %s\nBody: %s\n", event.Sequence, event.Timestamp, event.Body)
 	}
 
 }

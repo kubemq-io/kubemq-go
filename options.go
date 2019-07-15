@@ -1,6 +1,7 @@
 package kubemq
 
 import (
+	"errors"
 	"strings"
 	"time"
 )
@@ -119,8 +120,8 @@ func WithTransportType(transportType TransportType) Option {
 
 func GetDefaultOptions() *Options {
 	return &Options{
-		host:                 "localhost",
-		port:                 50000,
+		host:                 "",
+		port:                 0,
 		isSecured:            false,
 		certFile:             "",
 		serverOverrideDomain: "",
@@ -129,5 +130,27 @@ func GetDefaultOptions() *Options {
 		receiveBufferSize:    10,
 		defaultChannel:       "",
 		defaultCacheTTL:      time.Minute * 15,
+		transportType:        0,
+		restUri:              "",
+		webSocketUri:         "",
 	}
+}
+
+func (o *Options) Validate() error {
+	switch o.transportType {
+	case TransportTypeGRPC:
+		if o.host== "" {
+			return errors.New("invalid host")
+		}
+		if o.port<=0 {
+			return errors.New("invalid port")
+		}
+	case TransportTypeRest:
+		if o.restUri== "" {
+			return errors.New("invalid address uri")
+		}
+	default:
+		return errors.New("no transport type was set")
+	}
+	return nil
 }
