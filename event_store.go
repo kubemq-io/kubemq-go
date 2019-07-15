@@ -48,7 +48,7 @@ func (es *EventStore) SetBody(body []byte) *EventStore {
 }
 
 // AddTag - add key value tags to event store message
-func (es *EventStore) AddTag(key,value string) *EventStore {
+func (es *EventStore) AddTag(key, value string) *EventStore {
 	es.Tags[key] = value
 	return es
 }
