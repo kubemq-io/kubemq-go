@@ -334,7 +334,8 @@ func (rt *restTransport) SubscribeToEventsStore(ctx context.Context, channel, gr
 	eventsCh := make(chan *EventStoreReceive, rt.opts.receiveBufferSize)
 	subOption := subscriptionOption{}
 	opt.apply(&subOption)
-	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s&events_store_type_data=%d&events_store_type_value=%d", rt.wsAddress, rt.id, channel, group, "persistence", subOption.kind, subOption.value)
+	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s&events_store_type_data=%d&events_store_type_value=%d", rt.wsAddress, rt.id, channel, group, "events_store", subOption.kind, subOption.value)
+	fmt.Println(uri)
 	rxChan := make(chan string)
 	ready := make(chan struct{}, 1)
 	wsErrCh := make(chan error, 1)
