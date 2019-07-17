@@ -21,9 +21,9 @@ func main() {
 	defer sender.Close()
 
 	receiver, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
-		kubemq.WithClientId("test-event-store-sender-id"),
-		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
+		kubemq.WithUri("http://localhost:9090"),
+		kubemq.WithClientId("test-event-rest-client"),
+		kubemq.WithTransportType(kubemq.TransportTypeRest))
 	if err != nil {
 		log.Fatal(err)
 	}
