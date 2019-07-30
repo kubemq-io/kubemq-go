@@ -57,9 +57,9 @@ func main() {
 			}
 			log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
 			log.Println("no ack for 2 sec ")
-			time.Sleep(2000 * time.Millisecond)
+			time.Sleep(2100 * time.Millisecond)
 		}
-		stream.Close()
+
 	}()
 
 	time.Sleep(3 * time.Second)
