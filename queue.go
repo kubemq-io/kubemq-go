@@ -3,10 +3,8 @@ package kubemq
 import (
 	"context"
 	"errors"
-	"sync"
-	"time"
-
 	"github.com/kubemq-io/kubemq-go/pb"
+	"time"
 )
 
 type QueueMessage struct {
@@ -319,11 +317,12 @@ type StreamQueueMessage struct {
 	trace             *Trace
 	ctx               context.Context
 	cancel            context.CancelFunc
-	isCompleted       bool
-	mu                sync.Mutex
+	//	isCompleted       bool
+	//	mu        sync.Mutex
+	releaseCh chan bool
 }
 
-// SetId - set streamqueue message request id, otherwise new random uuid will be set
+// SetId - set stream queue message request id, otherwise new random uuid will be set
 func (req *StreamQueueMessage) SetId(id string) *StreamQueueMessage {
 	req.RequestID = id
 	return req
@@ -347,17 +346,14 @@ func (req *StreamQueueMessage) AddTrace(name string) *Trace {
 	return req.trace
 }
 
-// Close - end stream of queue messages
+// Close - end stream of queue messages and cancel all pending operations
 func (req *StreamQueueMessage) Close() {
-	req.isCompleted = true
 	req.cancel()
 	return
 }
 
 // Next - receive queue messages request , waiting for response or timeout
 func (req *StreamQueueMessage) Next(ctx context.Context, visibility, wait int32) (*QueueMessage, error) {
-	req.mu.Lock()
-
 	if req.transport == nil {
 		return nil, ErrNoTransportDefined
 	}
@@ -366,26 +362,28 @@ func (req *StreamQueueMessage) Next(ctx context.Context, visibility, wait int32)
 	}
 	req.reqCh = make(chan *pb.StreamQueueMessagesRequest, 1)
 	req.resCh = make(chan *pb.StreamQueueMessagesResponse, 1)
-	req.errCh = make(chan error, 2)
-	req.doneCh = make(chan bool, 2)
-	req.ctx, req.cancel = context.WithTimeout(ctx, time.Duration(wait+1)*time.Second)
+	req.errCh = make(chan error, 1)
+	req.doneCh = make(chan bool, 1)
+	req.ctx, req.cancel = context.WithCancel(ctx)
 	go req.transport.StreamQueueMessage(req.ctx, req.reqCh, req.resCh, req.errCh, req.doneCh)
 
 	go func() {
+		defer func() {
+			req.msg = nil
+			req.cancel()
+			select {
+			case <-req.releaseCh:
+			case <-time.After(1 * time.Second):
+			}
+		}()
 		for {
 			select {
 			case <-req.doneCh:
-				req.isCompleted = true
-				req.msg = nil
-				req.cancel()
-				req.mu.Unlock()
 				return
 			case <-req.ctx.Done():
-				req.mu.Unlock()
 				return
 			}
 		}
-
 	}()
 
 	getRequest := &pb.StreamQueueMessagesRequest{
@@ -434,7 +432,6 @@ func (req *StreamQueueMessage) Next(ctx context.Context, visibility, wait int32)
 			},
 			stream: req,
 		}
-
 		return req.msg, nil
 	case err := <-req.errCh:
 		return nil, err

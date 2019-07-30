@@ -14,7 +14,7 @@ const (
 
 var (
 	ErrNoTransportDefined    = errors.New("no transport layer defined, create object with client instance")
-	ErrNoTransportCpnnection = errors.New("no transport layer established, aborting")
+	ErrNoTransportConnection = errors.New("no transport layer established, aborting")
 )
 
 type ServerInfo struct {
@@ -25,10 +25,11 @@ type ServerInfo struct {
 }
 
 type Client struct {
-	opts       *Options
-	transport  Transport
-	ServerInfo *ServerInfo
-	currentSQM *StreamQueueMessage
+	opts                   *Options
+	transport              Transport
+	ServerInfo             *ServerInfo
+	singleStreamQueueMutex chan bool
+	//	currentSQM *StreamQueueMessage
 }
 
 func generateUUID() string {
@@ -59,8 +60,9 @@ func NewClient(ctx context.Context, op ...Option) (*Client, error) {
 		return nil, err
 	}
 	if client.transport == nil {
-		return nil, ErrNoTransportCpnnection
+		return nil, ErrNoTransportConnection
 	}
+	client.singleStreamQueueMutex = make(chan bool, 1)
 	return client, nil
 }
 
@@ -301,27 +303,29 @@ func (c *Client) NewStreamQueueMessage() *StreamQueueMessage {
 	return c.SQM()
 }
 
+func (c *Client) releaseQueueStream() {
+
+}
+
 // SQM - create an empty stream receive queue message object
 func (c *Client) SQM() *StreamQueueMessage {
-	if c.currentSQM == nil || c.currentSQM.isCompleted {
-		sqm := &StreamQueueMessage{
-			RequestID:         "",
-			ClientID:          c.opts.clientId,
-			Channel:           "",
-			visibilitySeconds: 0,
-			waitTimeSeconds:   0,
-			refSequence:       0,
-			reqCh:             nil,
-			resCh:             nil,
-			errCh:             nil,
-			doneCh:            nil,
-			msg:               nil,
-			transport:         c.transport,
-			trace:             nil,
-			ctx:               nil,
-		}
-		c.currentSQM = sqm
-		return sqm
+	c.singleStreamQueueMutex <- true
+	sqm := &StreamQueueMessage{
+		RequestID:         "",
+		ClientID:          c.opts.clientId,
+		Channel:           "",
+		visibilitySeconds: 0,
+		waitTimeSeconds:   0,
+		refSequence:       0,
+		reqCh:             nil,
+		resCh:             nil,
+		errCh:             nil,
+		doneCh:            nil,
+		msg:               nil,
+		transport:         c.transport,
+		trace:             nil,
+		ctx:               nil,
+		releaseCh:         c.singleStreamQueueMutex,
 	}
-	return c.currentSQM
+	return sqm
 }
