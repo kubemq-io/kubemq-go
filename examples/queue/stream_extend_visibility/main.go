@@ -64,6 +64,4 @@ func main() {
 	}
 	log.Println("ack done")
 
-	stream.Close()
-
 }
