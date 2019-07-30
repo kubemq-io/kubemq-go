@@ -55,7 +55,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Println("done")
-	stream.Close()
+
 	// checking the new channel
 	stream = receiverA.NewStreamQueueMessage().SetChannel(resendToChannel)
 	// get message from the queue
