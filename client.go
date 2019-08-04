@@ -303,12 +303,9 @@ func (c *Client) NewStreamQueueMessage() *StreamQueueMessage {
 	return c.SQM()
 }
 
-func (c *Client) releaseQueueStream() {
-
-}
-
 // SQM - create an empty stream receive queue message object
 func (c *Client) SQM() *StreamQueueMessage {
+
 	c.singleStreamQueueMutex <- true
 	sqm := &StreamQueueMessage{
 		RequestID:         "",
