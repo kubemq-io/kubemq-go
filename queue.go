@@ -366,7 +366,6 @@ func (req *StreamQueueMessage) Next(ctx context.Context, visibility, wait int32)
 	req.doneCh = make(chan bool, 1)
 	req.ctx, req.cancel = context.WithCancel(ctx)
 	go req.transport.StreamQueueMessage(req.ctx, req.reqCh, req.resCh, req.errCh, req.doneCh)
-
 	go func() {
 		defer func() {
 			req.msg = nil
@@ -375,6 +374,7 @@ func (req *StreamQueueMessage) Next(ctx context.Context, visibility, wait int32)
 			case <-req.releaseCh:
 			case <-time.After(1 * time.Second):
 			}
+
 		}()
 		for {
 			select {
@@ -396,7 +396,6 @@ func (req *StreamQueueMessage) Next(ctx context.Context, visibility, wait int32)
 		RefSequence:           0,
 		ModifiedMessage:       nil,
 	}
-
 	req.reqCh <- getRequest
 	select {
 	case getResponse := <-req.resCh:

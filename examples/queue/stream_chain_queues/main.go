@@ -13,11 +13,14 @@ import (
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	host := "localhost"
+	port := 50000
+	uri := "http://localhost:9090"
 	doneCh := "done"
 	deadCh := "dead"
-	sendCount := 100
+	sendCount := 10
 	sender, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithAddress(host, port),
 		kubemq.WithClientId("test-stream-sender-id"),
 		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
 	if err != nil {
@@ -27,9 +30,9 @@ func main() {
 	defer sender.Close()
 
 	receiver1, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithUri(uri),
 		kubemq.WithClientId("test-client-sender-id_receiver_a"),
-		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
+		kubemq.WithTransportType(kubemq.TransportTypeRest))
 	if err != nil {
 		log.Fatal(err)
 
@@ -37,7 +40,7 @@ func main() {
 	defer receiver1.Close()
 
 	receiver2, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithAddress(host, port),
 		kubemq.WithClientId("test-client-sender-id_receiver_b"),
 		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
 	if err != nil {
@@ -47,7 +50,7 @@ func main() {
 	defer receiver2.Close()
 
 	receiver3, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithAddress(host, port),
 		kubemq.WithClientId("test-client-sender-id_receiver_c"),
 		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
 	if err != nil {
@@ -57,9 +60,9 @@ func main() {
 	defer receiver3.Close()
 
 	receiver4, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithUri(uri),
 		kubemq.WithClientId("test-client-sender-id_receiver_a"),
-		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
+		kubemq.WithTransportType(kubemq.TransportTypeRest))
 	if err != nil {
 		log.Fatal(err)
 
@@ -67,7 +70,7 @@ func main() {
 	defer receiver4.Close()
 
 	receiver5, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithAddress(host, port),
 		kubemq.WithClientId("test-client-sender-id_receiver_b"),
 		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
 	if err != nil {
@@ -77,7 +80,7 @@ func main() {
 	defer receiver5.Close()
 
 	receiver6, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithAddress(host, port),
 		kubemq.WithClientId("test-client-sender-id_receiver_c"),
 		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
 	if err != nil {
@@ -110,7 +113,7 @@ func main() {
 		for {
 			stream := receiver1.NewStreamQueueMessage().SetChannel("receiverA")
 			// get message from the queue
-			msg, err := stream.Next(ctx, 10000, 5)
+			msg, err := stream.Next(ctx, 3, 5)
 			if err != nil {
 				log.Println("No new messages for ReceiverA")
 				return
@@ -129,6 +132,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		for {
+
 			stream := receiver2.NewStreamQueueMessage().SetChannel("receiverB")
 			// get message from the queue
 			msg, err := stream.Next(ctx, 3, 5)
@@ -143,6 +147,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+			time.Sleep(100 * time.Millisecond)
 		}
 
 	}()

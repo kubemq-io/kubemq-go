@@ -84,6 +84,7 @@ func newBiDirectionalWebsocketConn(ctx context.Context, uri string, readCh chan 
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
+				errCh <- err
 				return
 			}
 			select {
@@ -335,7 +336,6 @@ func (rt *restTransport) SubscribeToEventsStore(ctx context.Context, channel, gr
 	subOption := subscriptionOption{}
 	opt.apply(&subOption)
 	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s&events_store_type_data=%d&events_store_type_value=%d", rt.wsAddress, rt.id, channel, group, "events_store", subOption.kind, subOption.value)
-	fmt.Println(uri)
 	rxChan := make(chan string)
 	ready := make(chan struct{}, 1)
 	wsErrCh := make(chan error, 1)
@@ -712,6 +712,7 @@ func (rt *restTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.
 		case req := <-reqCh:
 			data, _ := json.Marshal(req)
 			writeCh <- data
+
 		case err := <-wsErrCh:
 			errCh <- err
 			return
