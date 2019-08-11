@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kubemq-io/kubemq-go/pb"
 
-	"github.com/go-resty/resty"
+	"github.com/go-resty/resty/v2"
 	"github.com/gorilla/websocket"
 )
 
@@ -140,7 +140,7 @@ func newRestTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 func (rt *restTransport) Ping(ctx context.Context) (*ServerInfo, error) {
 	resp := &restResponse{}
 	uri := fmt.Sprintf("%s/ping", rt.restAddress)
-	_, err := resty.R().SetResult(resp).SetError(resp).Get(uri)
+	_, err := resty.New().R().SetResult(resp).SetError(resp).Get(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +163,7 @@ func (rt *restTransport) SendEvent(ctx context.Context, event *Event) error {
 		Tags:     event.Tags,
 	}
 	uri := fmt.Sprintf("%s/send/event", rt.restAddress)
-	_, err := resty.R().SetBody(eventPb).SetResult(resp).SetError(resp).Post(uri)
+	_, err := resty.New().R().SetBody(eventPb).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return err
 	}
@@ -271,7 +271,7 @@ func (rt *restTransport) SendEventStore(ctx context.Context, eventStore *EventSt
 		Tags:     eventStore.Tags,
 	}
 	uri := fmt.Sprintf("%s/send/event", rt.restAddress)
-	_, err := resty.R().SetBody(eventPb).SetResult(resp).SetError(resp).Post(uri)
+	_, err := resty.New().R().SetBody(eventPb).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -395,7 +395,7 @@ func (rt *restTransport) SendCommand(ctx context.Context, command *Command) (*Co
 		XXX_sizecache:        0,
 	}
 	uri := fmt.Sprintf("%s/send/request", rt.restAddress)
-	_, err := resty.R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
+	_, err := resty.New().R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +465,7 @@ func (rt *restTransport) SendQuery(ctx context.Context, query *Query) (*QueryRes
 		Tags:            query.Tags,
 	}
 	uri := fmt.Sprintf("%s/send/request", rt.restAddress)
-	_, err := resty.R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
+	_, err := resty.New().R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -533,7 +533,7 @@ func (rt *restTransport) SendResponse(ctx context.Context, response *Response) e
 		Tags:         response.Tags,
 	}
 	uri := fmt.Sprintf("%s/send/response", rt.restAddress)
-	_, err := resty.R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
+	_, err := resty.New().R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return err
 	}
@@ -561,7 +561,7 @@ func (rt *restTransport) SendQueueMessage(ctx context.Context, msg *QueueMessage
 		},
 	}
 	uri := fmt.Sprintf("%s/queue/send", rt.restAddress)
-	_, err := resty.R().SetBody(msgSend).SetResult(resp).SetError(resp).Post(uri)
+	_, err := resty.New().R().SetBody(msgSend).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -596,7 +596,7 @@ func (rt *restTransport) SendQueueMessages(ctx context.Context, msgs []*QueueMes
 		})
 	}
 	uri := fmt.Sprintf("%s/queue/send_batch", rt.restAddress)
-	_, err := resty.R().SetBody(br).SetResult(resp).SetError(resp).Post(uri)
+	_, err := resty.New().R().SetBody(br).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -630,7 +630,7 @@ func (rt *restTransport) ReceiveQueueMessages(ctx context.Context, req *ReceiveQ
 		IsPeak:              req.IsPeak,
 	}
 	uri := fmt.Sprintf("%s/queue/receive", rt.restAddress)
-	_, err := resty.R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
+	_, err := resty.New().R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -650,7 +650,7 @@ func (rt *restTransport) AckAllQueueMessages(ctx context.Context, req *AckAllQue
 		WaitTimeSeconds: req.WaitTimeSeconds,
 	}
 	uri := fmt.Sprintf("%s/queue/ack_all", rt.restAddress)
-	_, err := resty.R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
+	_, err := resty.New().R().SetBody(request).SetResult(resp).SetError(resp).Post(uri)
 	if err != nil {
 		return nil, err
 	}
