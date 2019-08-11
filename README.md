@@ -9,9 +9,10 @@ KubeMQ Go SDK requires a Go version capable of understanding /vN suffixed import
 - 1.11+
 - 1.12+
 
-`# Go Modules
+``` bash
+# Go Modules
 require github.com/kubemq-io/kubemq-go v1.2.5
-`
+```
 
 ## Documentation
 Please visit our [docs](https://docs.kubemq.io/reference/go.html).
