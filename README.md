@@ -2,8 +2,17 @@
 KubeMQ is an enterprise-grade message queue and broker for containers, designed for any workload and architecture running in Kubernetes.
 This library is Go implementation of KubeMQ client connection.
 ## Installation
-`$ go get -u github.com/kubemq-io/kubemq-go
+
+KubeMQ Go SDK requires a Go version capable of understanding /vN suffixed imports:
+- 1.9.7+
+- 1.10.3+
+- 1.11+
+- 1.12+
+
+`# Go Modules
+require github.com/kubemq-io/kubemq-go v1.2.5
 `
+
 ## Documentation
 Please visit our [docs](https://docs.kubemq.io/reference/go.html).
 
