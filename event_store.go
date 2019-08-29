@@ -134,7 +134,7 @@ func StartFromSequence(sequence int) SubscriptionOption {
 func StartFromTime(since time.Time) SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
 		o.kind = pb.StartAtTime
-		o.value = since.Unix()
+		o.value = since.UnixNano()
 	})
 }
 
