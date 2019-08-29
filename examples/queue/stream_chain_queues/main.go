@@ -14,8 +14,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	host := "localhost"
-	port := 50000
-	uri := "http://localhost:9090"
+	port := 32707
+	uri := "http://localhost:30830"
 	doneCh := "done"
 	deadCh := "dead"
 	sendCount := 10
