@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/kubemq-io/kubemq-go/pb"
+	pb "github.com/kubemq-io/protobuf/go"
 )
 
 type EventStore struct {

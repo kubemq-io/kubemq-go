@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/kubemq-io/kubemq-go/pb"
+	pb "github.com/kubemq-io/protobuf/go"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/gorilla/websocket"
