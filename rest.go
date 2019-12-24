@@ -132,7 +132,7 @@ func newRestTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 	}
 	si, err := rt.Ping(ctx)
 	if err != nil {
-		return nil, &ServerInfo{}, nil
+		return nil, &ServerInfo{}, err
 	}
 	return rt, si, nil
 }
