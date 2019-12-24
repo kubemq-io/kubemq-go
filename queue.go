@@ -3,7 +3,7 @@ package kubemq
 import (
 	"context"
 	"errors"
-	"github.com/kubemq-io/kubemq-go/pb"
+	pb "github.com/kubemq-io/protobuf/go"
 	"time"
 )
 
