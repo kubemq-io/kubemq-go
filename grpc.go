@@ -79,8 +79,8 @@ func newGRPCTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 
 func (g *gRPCTransport) SetUnaryInterceptor() grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		if g.opts.token != "" {
-			ctx = metadata.AppendToOutgoingContext(ctx, kubeMQTokenHeader, g.opts.token)
+		if g.opts.authToken != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, kubeMQAuthTokenHeader, g.opts.authToken)
 		}
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
@@ -88,8 +88,8 @@ func (g *gRPCTransport) SetUnaryInterceptor() grpc.UnaryClientInterceptor {
 
 func (g *gRPCTransport) SetStreamInterceptor() grpc.StreamClientInterceptor {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-		if g.opts.token != "" {
-			ctx = metadata.AppendToOutgoingContext(ctx, kubeMQTokenHeader, g.opts.token)
+		if g.opts.authToken != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, kubeMQAuthTokenHeader, g.opts.authToken)
 		}
 		return streamer(ctx, desc, cc, method, opts...)
 	}
