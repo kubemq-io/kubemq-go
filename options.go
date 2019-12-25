@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const kubeMQTokenHeader = "X-Kubemq-Server-Token"
+const kubeMQAuthTokenHeader = "authorization"
 
 type Option interface {
 	apply(*Options)
@@ -25,7 +25,7 @@ type Options struct {
 	certFile             string
 	certData             string
 	serverOverrideDomain string
-	token                string
+	authToken            string
 	clientId             string
 	receiveBufferSize    int
 	defaultChannel       string
@@ -88,10 +88,10 @@ func WithCertificate(certData, serverOverrideDomain string) Option {
 	})
 }
 
-// WithToken - set KubeMQ token to be used for KubeMQ connection - not mandatory, only if enforced by the KubeMQ server
-func WithToken(token string) Option {
+// WithAuthToken - set KubeMQ JWT Auth token to be used for KubeMQ connection
+func WithAuthToken(token string) Option {
 	return newFuncOption(func(o *Options) {
-		o.token = token
+		o.authToken = token
 	})
 }
 
@@ -137,7 +137,7 @@ func GetDefaultOptions() *Options {
 		isSecured:            false,
 		certFile:             "",
 		serverOverrideDomain: "",
-		token:                "",
+		authToken:            "",
 		clientId:             "ClientId",
 		receiveBufferSize:    10,
 		defaultChannel:       "",
