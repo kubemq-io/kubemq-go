@@ -58,7 +58,7 @@ func main() {
 
 	go func() {
 		for {
-			receiveResult, err := workerA.NewReceiveQueueMessagesRequest().
+			receiveResult, err := workerB.NewReceiveQueueMessagesRequest().
 				SetChannel(channel).
 				SetMaxNumberOfMessages(1).
 				SetWaitTimeSeconds(2).
