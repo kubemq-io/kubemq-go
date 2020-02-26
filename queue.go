@@ -349,7 +349,7 @@ func (req *StreamQueueMessage) AddTrace(name string) *Trace {
 // Close - end stream of queue messages and cancel all pending operations
 func (req *StreamQueueMessage) Close() {
 	req.cancel()
-	return
+
 }
 
 // Next - receive queue messages request , waiting for response or timeout
