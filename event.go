@@ -45,7 +45,7 @@ func (e *Event) SetBody(body []byte) *Event {
 }
 
 // AddTag - add key value tags to event message
-func (e *Event) AddTag(key,value string) *Event {
+func (e *Event) AddTag(key, value string) *Event {
 	e.Tags[key] = value
 	return e
 }
