@@ -15,6 +15,12 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+const (
+	defaultMaxSendSize = 1024 * 1024 * 100 //100MB
+	defaultMaxRcvSize  = 1024 * 1024 * 100 //100MB
+
+)
+
 type gRPCTransport struct {
 	opts   *Options
 	conn   *grpc.ClientConn
@@ -22,7 +28,7 @@ type gRPCTransport struct {
 }
 
 func newGRPCTransport(ctx context.Context, opts *Options) (Transport, *ServerInfo, error) {
-	var connOptions []grpc.DialOption
+	connOptions := []grpc.DialOption{grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(defaultMaxRcvSize), grpc.MaxCallSendMsgSize(defaultMaxSendSize))}
 	if opts.isSecured {
 		if opts.certFile != "" {
 			creds, err := credentials.NewClientTLSFromFile(opts.certFile, opts.serverOverrideDomain)
