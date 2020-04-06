@@ -66,12 +66,12 @@ func newGRPCTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 		return nil, nil, err
 	}
 	go func() {
-		select {
-		case <-ctx.Done():
-			if g.conn != nil {
-				_ = g.conn.Close()
-			}
+
+		<-ctx.Done()
+		if g.conn != nil {
+			_ = g.conn.Close()
 		}
+
 	}()
 	g.client = pb.NewKubemqClient(g.conn)
 
@@ -377,6 +377,7 @@ func (g *gRPCTransport) SendCommand(ctx context.Context, command *Command) (*Com
 		Executed:         grpcResponse.Executed,
 		ExecutedAt:       time.Unix(grpcResponse.Timestamp, 0),
 		Error:            grpcResponse.Error,
+		Tags:             grpcResponse.Tags,
 	}
 	return commandResponse, nil
 }
@@ -451,6 +452,7 @@ func (g *gRPCTransport) SendQuery(ctx context.Context, query *Query) (*QueryResp
 		Metadata:         grpcResponse.Metadata,
 		ResponseClientId: grpcResponse.ClientID,
 		Body:             grpcResponse.Body,
+		Tags:             grpcResponse.Tags,
 		CacheHit:         grpcResponse.CacheHit,
 		Error:            grpcResponse.Error,
 	}

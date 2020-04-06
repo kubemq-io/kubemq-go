@@ -34,7 +34,7 @@ func main() {
 			case err := <-errCh:
 				log.Fatal(err)
 				return
-			case query,more := <-queriesCh:
+			case query, more := <-queriesCh:
 				if !more {
 					fmt.Println("Query Received, done")
 					return
@@ -57,13 +57,13 @@ func main() {
 
 	}()
 	// give some time to connect a receiver
-	time.Sleep(1 *time.Second)
+	time.Sleep(1 * time.Second)
 	response, err := client.NewQuery().
 		SetId("some-query-id").
 		SetChannel(channel).
 		SetMetadata("some-metadata").
 		SetBody([]byte("hello kubemq - sending a query, please reply")).
-		SetTimeout(1 *time.Second).
+		SetTimeout(1 * time.Second).
 		Send(ctx)
 	if err != nil {
 		log.Fatal(err)
