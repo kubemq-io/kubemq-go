@@ -32,9 +32,9 @@ func main() {
 	log.Printf("Send to Queue Result: MessageID:%s,Sent At: %s\n", sendResult.MessageID, time.Unix(0, sendResult.SentAt).String())
 
 	receiverA, err := kubemq.NewClient(ctx,
-		kubemq.WithUri("http://localhost:9090"),
+		kubemq.WithAddress("localhost", 50000),
 		kubemq.WithClientId("test-client-sender-id"),
-		kubemq.WithTransportType(kubemq.TransportTypeRest))
+		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
 	if err != nil {
 		log.Fatal(err)
 
