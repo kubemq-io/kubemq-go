@@ -326,3 +326,8 @@ func (c *Client) SQM() *StreamQueueMessage {
 	}
 	return sqm
 }
+
+// Ping - get status of current connection
+func (c *Client) Ping(ctx context.Context) (*ServerInfo, error) {
+	return c.transport.Ping(ctx)
+}
