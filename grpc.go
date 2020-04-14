@@ -4,10 +4,10 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
+	"github.com/nats-io/nuid"
 	"io"
 	"time"
 
-	"github.com/google/uuid"
 	pb "github.com/kubemq-io/protobuf/go"
 	"go.opencensus.io/trace"
 	"google.golang.org/grpc"
@@ -561,7 +561,7 @@ func (g *gRPCTransport) SendQueueMessage(ctx context.Context, msg *QueueMessage)
 
 func (g *gRPCTransport) SendQueueMessages(ctx context.Context, msgs []*QueueMessage) ([]*SendQueueMessageResult, error) {
 	br := &pb.QueueMessagesBatchRequest{
-		BatchID:  uuid.New().String(),
+		BatchID:  nuid.New().Next(),
 		Messages: []*pb.QueueMessage{},
 	}
 
