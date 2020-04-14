@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/kubemq-io/kubemq-go"
+	"github.com/nats-io/nuid"
 	"log"
 	"sync"
 	"time"
@@ -93,7 +94,7 @@ func main() {
 	wg.Add(6)
 
 	for i := 1; i <= sendCount; i++ {
-		messageID := uuid.New().String()
+		messageID := nuid.New().Next()
 		sendResult, err := sender.NewQueueMessage().
 			SetId(messageID).
 			SetChannel("receiverA").
