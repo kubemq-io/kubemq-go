@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"github.com/kubemq-io/kubemq-go"
 	"github.com/nats-io/nuid"
 	"log"
@@ -119,7 +118,7 @@ func main() {
 				log.Println("No new messages for ReceiverA")
 				return
 			}
-			log.Printf("Queue: ReceiverA,MessageID: %s, Body: %s,Seq: %d - send to queue receiverB", msg.Id, string(msg.Body), msg.Attributes.Sequence)
+			log.Printf("Queue: ReceiverA,MessageID: %s, Body: %s,Seq: %d - send to queue receiverB", msg.MessageID, string(msg.Body), msg.Attributes.Sequence)
 			time.Sleep(10 * time.Millisecond)
 			msg.SetChannel("receiverB")
 			err = stream.ResendWithNewMessage(msg)
@@ -141,7 +140,7 @@ func main() {
 				log.Println("No new messages for ReceiverB")
 				return
 			}
-			log.Printf("Queue: ReceiverB,MessageID: %s, Body: %s - send to new receiverC", msg.Id, string(msg.Body))
+			log.Printf("Queue: ReceiverB,MessageID: %s, Body: %s - send to new receiverC", msg.MessageID, string(msg.Body))
 			time.Sleep(10 * time.Millisecond)
 			msg.SetChannel("receiverC")
 			err = stream.ResendWithNewMessage(msg)
@@ -162,7 +161,7 @@ func main() {
 				log.Println("No new messages for ReceiverC")
 				return
 			}
-			log.Printf("Queue: ReceiverC,MessageID: %s, Body: %s - send to new receiverD", msg.Id, string(msg.Body))
+			log.Printf("Queue: ReceiverC,MessageID: %s, Body: %s - send to new receiverD", msg.MessageID, string(msg.Body))
 			time.Sleep(10 * time.Millisecond)
 			msg.SetChannel("receiverD")
 			err = stream.ResendWithNewMessage(msg)
@@ -182,7 +181,7 @@ func main() {
 				log.Println("No new messages for ReceiverD")
 				return
 			}
-			log.Printf("Queue: ReceiverD MessageID: %s, Body: %s - send to queue receiverE", msg.Id, string(msg.Body))
+			log.Printf("Queue: ReceiverD MessageID: %s, Body: %s - send to queue receiverE", msg.MessageID, string(msg.Body))
 			time.Sleep(10 * time.Millisecond)
 			msg.SetChannel("receiverE")
 			err = stream.ResendWithNewMessage(msg)
@@ -203,7 +202,7 @@ func main() {
 				log.Println("No new messages for ReceiverE")
 				return
 			}
-			log.Printf("Queue: ReceiverE,MessageID: %s, Body: %s - send to new receiverF", msg.Id, string(msg.Body))
+			log.Printf("Queue: ReceiverE,MessageID: %s, Body: %s - send to new receiverF", msg.MessageID, string(msg.Body))
 			time.Sleep(10 * time.Millisecond)
 			msg.SetChannel("receiverF")
 			err = stream.ResendWithNewMessage(msg)
@@ -225,7 +224,7 @@ func main() {
 				log.Println("No new messages for ReceiverF")
 				return
 			}
-			log.Printf("Queue: ReceiverF,MessageID: %s, Body: %s - wait for 1.1 sec and exit", msg.Id, string(msg.Body))
+			log.Printf("Queue: ReceiverF,MessageID: %s, Body: %s - wait for 1.1 sec and exit", msg.MessageID, string(msg.Body))
 			time.Sleep(1100 * time.Millisecond)
 
 		}
@@ -248,7 +247,7 @@ func main() {
 	}
 	log.Printf("Done Messages - %d: Expried - %d", res.MessagesReceived, res.MessagesExpired)
 	for i := 0; i < len(res.Messages); i++ {
-		log.Printf("MessageID: %s, Body: %s, Seq: %d", res.Messages[i].Id, res.Messages[i].Body, res.Messages[i].Attributes.Sequence)
+		log.Printf("MessageID: %s, Body: %s, Seq: %d", res.Messages[i].MessageID, res.Messages[i].Body, res.Messages[i].Attributes.Sequence)
 	}
 
 	res, err = sender.ReceiveQueueMessages(ctx, &kubemq.ReceiveQueueMessagesRequest{
@@ -267,6 +266,6 @@ func main() {
 	}
 	log.Printf("Dead Letter Messages - %d: Expried - %d", res.MessagesReceived, res.MessagesExpired)
 	for i := 0; i < len(res.Messages); i++ {
-		log.Printf("MessageID: %s, Body: %s", res.Messages[i].Id, res.Messages[i].Body)
+		log.Printf("MessageID: %s, Body: %s", res.Messages[i].MessageID, res.Messages[i].Body)
 	}
 }
