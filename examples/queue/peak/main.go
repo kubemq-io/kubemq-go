@@ -73,7 +73,7 @@ func main() {
 	}
 	log.Printf("Peak Client Received %d Messages:\n", receiveResult.MessagesReceived)
 	for _, msg := range receiveResult.Messages {
-		log.Printf("Peaking MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+		log.Printf("Peaking MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 	}
 
 	// Consuming the messages
@@ -91,7 +91,7 @@ func main() {
 			}
 			log.Printf("Worker A Received %d Messages:\n", receiveResult.MessagesReceived)
 			for _, msg := range receiveResult.Messages {
-				log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+				log.Printf("MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 			}
 		}
 
@@ -109,7 +109,7 @@ func main() {
 			}
 			log.Printf("Worker B Received %d Messages:\n", receiveResult.MessagesReceived)
 			for _, msg := range receiveResult.Messages {
-				log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+				log.Printf("MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 			}
 		}
 

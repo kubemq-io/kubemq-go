@@ -46,7 +46,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+	log.Printf("MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 	log.Println("doing some work.....")
 	time.Sleep(time.Second)
 	// ack the current message
