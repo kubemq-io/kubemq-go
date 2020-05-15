@@ -3,6 +3,7 @@ package kubemq
 import (
 	"context"
 	"errors"
+	pb "github.com/kubemq-io/protobuf/go"
 	"time"
 )
 
@@ -205,19 +206,22 @@ func (c *Client) NewQueueMessage() *QueueMessage {
 // QM - create an empty queue message object
 func (c *Client) QM() *QueueMessage {
 	return &QueueMessage{
-		Id:         "",
-		ClientId:   c.opts.clientId,
-		Channel:    "",
-		Metadata:   "",
-		Body:       nil,
-		Tags:       map[string]string{},
-		Attributes: nil,
-		Policy: &QueueMessagePolicy{
-			ExpirationSeconds: 0,
-			DelaySeconds:      0,
-			MaxReceiveCount:   0,
-			MaxReceiveQueue:   "",
+		QueueMessage: &pb.QueueMessage{
+			MessageID:  "",
+			ClientID:   c.opts.clientId,
+			Channel:    "",
+			Metadata:   "",
+			Body:       nil,
+			Tags:       map[string]string{},
+			Attributes: nil,
+			Policy: &pb.QueueMessagePolicy{
+				ExpirationSeconds: 0,
+				DelaySeconds:      0,
+				MaxReceiveCount:   0,
+				MaxReceiveQueue:   "",
+			},
 		},
+
 		transport: c.transport,
 		trace:     nil,
 	}

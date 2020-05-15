@@ -460,6 +460,9 @@ func (g *gRPCTransport) SendQuery(ctx context.Context, query *Query) (*QueryResp
 }
 
 func (g *gRPCTransport) SubscribeToQueries(ctx context.Context, channel, group string, errCh chan error) (<-chan *QueryReceive, error) {
+	if errCh == nil {
+		return nil, fmt.Errorf("error channel cannot be nil")
+	}
 	queriesCH := make(chan *QueryReceive, g.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
 		SubscribeTypeData: pb.Queries,
@@ -528,21 +531,7 @@ func (g *gRPCTransport) SendResponse(ctx context.Context, response *Response) er
 }
 
 func (g *gRPCTransport) SendQueueMessage(ctx context.Context, msg *QueueMessage) (*SendQueueMessageResult, error) {
-	result, err := g.client.SendQueueMessage(ctx, &pb.QueueMessage{
-		MessageID:  msg.Id,
-		ClientID:   msg.ClientId,
-		Channel:    msg.Channel,
-		Metadata:   msg.Metadata,
-		Body:       msg.Body,
-		Tags:       msg.Tags,
-		Attributes: &pb.QueueMessageAttributes{},
-		Policy: &pb.QueueMessagePolicy{
-			ExpirationSeconds: msg.Policy.ExpirationSeconds,
-			DelaySeconds:      msg.Policy.DelaySeconds,
-			MaxReceiveCount:   msg.Policy.MaxReceiveCount,
-			MaxReceiveQueue:   msg.Policy.MaxReceiveQueue,
-		},
-	})
+	result, err := g.client.SendQueueMessage(ctx, msg.QueueMessage)
 	if err != nil {
 		return nil, err
 	}
@@ -566,21 +555,7 @@ func (g *gRPCTransport) SendQueueMessages(ctx context.Context, msgs []*QueueMess
 	}
 
 	for _, msg := range msgs {
-		br.Messages = append(br.Messages, &pb.QueueMessage{
-			MessageID:  msg.Id,
-			ClientID:   msg.ClientId,
-			Channel:    msg.Channel,
-			Metadata:   msg.Metadata,
-			Body:       msg.Body,
-			Tags:       msg.Tags,
-			Attributes: &pb.QueueMessageAttributes{},
-			Policy: &pb.QueueMessagePolicy{
-				ExpirationSeconds: msg.Policy.ExpirationSeconds,
-				DelaySeconds:      msg.Policy.DelaySeconds,
-				MaxReceiveCount:   msg.Policy.MaxReceiveCount,
-				MaxReceiveQueue:   msg.Policy.MaxReceiveQueue,
-			},
-		})
+		br.Messages = append(br.Messages, msg.QueueMessage)
 	}
 	batchResults, err := g.client.SendQueueMessagesBatch(ctx, br)
 	if err != nil {
@@ -628,28 +603,10 @@ func (g *gRPCTransport) ReceiveQueueMessages(ctx context.Context, req *ReceiveQu
 		if response.Messages != nil {
 			for _, msg := range response.Messages {
 				res.Messages = append(res.Messages, &QueueMessage{
-					Id:       msg.MessageID,
-					ClientId: msg.ClientID,
-					Channel:  msg.Channel,
-					Metadata: msg.Metadata,
-					Body:     msg.Body,
-					Tags:     msg.Tags,
-					Attributes: &QueueMessageAttributes{
-						Timestamp:         msg.Attributes.Timestamp,
-						Sequence:          msg.Attributes.Sequence,
-						MD5OfBody:         msg.Attributes.MD5OfBody,
-						ReceiveCount:      msg.Attributes.ReceiveCount,
-						ReRouted:          msg.Attributes.ReRouted,
-						ReRoutedFromQueue: msg.Attributes.ReRoutedFromQueue,
-						ExpirationAt:      msg.Attributes.ExpirationAt,
-						DelayedTo:         msg.Attributes.DelayedTo,
-					},
-					Policy: &QueueMessagePolicy{
-						ExpirationSeconds: msg.Policy.ExpirationSeconds,
-						DelaySeconds:      msg.Policy.DelaySeconds,
-						MaxReceiveCount:   msg.Policy.MaxReceiveCount,
-						MaxReceiveQueue:   msg.Policy.MaxReceiveQueue,
-					},
+					QueueMessage: msg,
+					transport:    g,
+					trace:        nil,
+					stream:       nil,
 				})
 			}
 

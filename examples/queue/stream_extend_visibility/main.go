@@ -47,7 +47,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+	log.Printf("MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 	log.Println("work for 1 seconds")
 	time.Sleep(1000 * time.Millisecond)
 	log.Println("need more time to process, extend visibility for more 3 seconds")

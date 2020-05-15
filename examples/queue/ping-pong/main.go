@@ -42,7 +42,7 @@ func main() {
 		if receiveResult != nil {
 			log.Printf("Received %d Messages:\n", receiveResult.MessagesReceived)
 			for _, msg := range receiveResult.Messages {
-				log.Printf("Seq: %d,MessageID: %s, Body: %s", msg.Attributes.Sequence, msg.Id, string(msg.Body))
+				log.Printf("Seq: %d,MessageID: %s, Body: %s", msg.Attributes.Sequence, msg.MessageID, string(msg.Body))
 			}
 		}
 

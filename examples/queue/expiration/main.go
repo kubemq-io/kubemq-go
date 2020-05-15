@@ -68,7 +68,7 @@ func main() {
 			}
 			log.Printf("Worker A Received %d Messages:\n", receiveResult.MessagesReceived)
 			for _, msg := range receiveResult.Messages {
-				log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+				log.Printf("MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 			}
 			log.Printf("Worker A notified of %d Expired Messages:\n", receiveResult.MessagesExpired)
 
@@ -88,7 +88,7 @@ func main() {
 			}
 			log.Printf("Worker B Received %d Messages:\n", receiveResult.MessagesReceived)
 			for _, msg := range receiveResult.Messages {
-				log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+				log.Printf("MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 			}
 			log.Printf("Worker B notified of %d Expired Messages:\n", receiveResult.MessagesExpired)
 		}
