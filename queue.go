@@ -8,29 +8,58 @@ import (
 )
 
 type QueueMessage struct {
-	Id         string
-	ClientId   string
-	Channel    string
-	Metadata   string
-	Body       []byte
-	Tags       map[string]string
-	Attributes *QueueMessageAttributes
-	Policy     *QueueMessagePolicy
-	transport  Transport
-	trace      *Trace
-	stream     *StreamQueueMessage
+	*pb.QueueMessage
+	//Id         string
+	//ClientId   string
+	//Channel    string
+	//Metadata   string
+	//Body       []byte
+	//Tags       map[string]string
+	//Attributes *QueueMessageAttributes
+	//Policy     *QueueMessagePolicy
+	transport Transport
+	trace     *Trace
+	stream    *StreamQueueMessage
 }
+
+//
+//func CreateQueueMessageFromPB(msg *pb.QueueMessage) *QueueMessage {
+//	return &QueueMessage{
+//		Id:       msg.MessageID,
+//		ClientId: msg.ClientID,
+//		Channel:  msg.Channel,
+//		Metadata: msg.Metadata,
+//		Body:     msg.Body,
+//		Tags:     msg.Tags,
+//		Attributes: &QueueMessageAttributes{
+//			Timestamp:         msg.Attributes.Timestamp,
+//			Sequence:          msg.Attributes.Sequence,
+//			MD5OfBody:         msg.Attributes.MD5OfBody,
+//			ReceiveCount:      msg.Attributes.ReceiveCount,
+//			ReRouted:          msg.Attributes.ReRouted,
+//			ReRoutedFromQueue: msg.Attributes.ReRoutedFromQueue,
+//			ExpirationAt:      msg.Attributes.ExpirationAt,
+//			DelayedTo:         msg.Attributes.DelayedTo,
+//		},
+//		Policy: &QueueMessagePolicy{
+//			ExpirationSeconds: msg.Policy.ExpirationSeconds,
+//			DelaySeconds:      msg.Policy.DelaySeconds,
+//			MaxReceiveCount:   msg.Policy.MaxReceiveCount,
+//			MaxReceiveQueue:   msg.Policy.MaxReceiveQueue,
+//		},
+//	}
+//}
 
 // SetId - set queue message id, otherwise new random uuid will be set
 func (qm *QueueMessage) SetId(id string) *QueueMessage {
-	qm.Id = id
+	qm.MessageID = id
 	return qm
 
 }
 
 // SetClientId - set queue message ClientId - mandatory if default client was not set
 func (qm *QueueMessage) SetClientId(clientId string) *QueueMessage {
-	qm.ClientId = clientId
+	qm.ClientID = clientId
 	return qm
 }
 
@@ -407,29 +436,8 @@ func (req *StreamQueueMessage) Next(ctx context.Context, visibility, wait int32)
 		}
 		resMsg := getResponse.Message
 		req.msg = &QueueMessage{
-			Id:       resMsg.MessageID,
-			ClientId: resMsg.ClientID,
-			Channel:  resMsg.Channel,
-			Metadata: resMsg.Metadata,
-			Body:     resMsg.Body,
-			Tags:     resMsg.Tags,
-			Attributes: &QueueMessageAttributes{
-				Timestamp:         resMsg.Attributes.Timestamp,
-				Sequence:          resMsg.Attributes.Sequence,
-				MD5OfBody:         resMsg.Attributes.MD5OfBody,
-				ReceiveCount:      resMsg.Attributes.ReceiveCount,
-				ReRouted:          resMsg.Attributes.ReRouted,
-				ReRoutedFromQueue: resMsg.Attributes.ReRoutedFromQueue,
-				ExpirationAt:      resMsg.Attributes.ExpirationAt,
-				DelayedTo:         resMsg.Attributes.DelayedTo,
-			},
-			Policy: &QueueMessagePolicy{
-				ExpirationSeconds: resMsg.Policy.ExpirationSeconds,
-				DelaySeconds:      resMsg.Policy.DelaySeconds,
-				MaxReceiveCount:   resMsg.Policy.MaxReceiveCount,
-				MaxReceiveQueue:   resMsg.Policy.MaxReceiveQueue,
-			},
-			stream: req,
+			QueueMessage: resMsg,
+			stream:       req,
 		}
 		return req.msg, nil
 	case err := <-req.errCh:
@@ -581,8 +589,8 @@ func (req *StreamQueueMessage) ResendWithNewMessage(msg *QueueMessage) error {
 		WaitTimeSeconds:       0,
 		RefSequence:           0,
 		ModifiedMessage: &pb.QueueMessage{
-			MessageID:  msg.Id,
-			ClientID:   msg.ClientId,
+			MessageID:  msg.MessageID,
+			ClientID:   msg.ClientID,
 			Channel:    msg.Channel,
 			Metadata:   msg.Metadata,
 			Body:       msg.Body,

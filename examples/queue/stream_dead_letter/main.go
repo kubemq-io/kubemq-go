@@ -55,7 +55,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+			log.Printf("MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 			log.Println("no ack for 2 sec ")
 			time.Sleep(2100 * time.Millisecond)
 		}
@@ -71,7 +71,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Dead-Letter Queue MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+	log.Printf("Dead-Letter Queue MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 	err = msg.Ack()
 	if err != nil {
 		log.Fatal(err)
