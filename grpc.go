@@ -206,7 +206,7 @@ func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, channel, group st
 				Channel:   event.Channel,
 				Metadata:  event.Metadata,
 				Body:      event.Body,
-				ClientId:  "",
+				ClientId:  g.opts.clientId,
 				Tags:      event.Tags,
 				transport: nil,
 			}:
