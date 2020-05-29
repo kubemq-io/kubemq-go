@@ -332,7 +332,7 @@ func (g *gRPCTransport) SubscribeToEventsStore(ctx context.Context, channel, gro
 				Channel:   event.Channel,
 				Metadata:  event.Metadata,
 				Body:      event.Body,
-				ClientId:  "",
+				ClientId:  g.opts.clientId,
 				Tags:      event.Tags,
 			}:
 			case <-ctx.Done():
