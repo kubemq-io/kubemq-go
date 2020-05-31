@@ -139,11 +139,15 @@ func newRestTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 		wsConn:      nil,
 		opts:        opts,
 	}
-	si, err := rt.Ping(ctx)
-	if err != nil {
-		return nil, &ServerInfo{}, err
+	if rt.opts.checkConnection {
+		si, err := rt.Ping(ctx)
+		if err != nil {
+			return nil, &ServerInfo{}, err
+		}
+		return rt, si, nil
+	} else {
+		return rt, &ServerInfo{}, nil
 	}
-	return rt, si, nil
 }
 func (rt *restTransport) newRequest() *resty.Request {
 	r := resty.New().R()
