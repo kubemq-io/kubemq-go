@@ -33,6 +33,10 @@ type Options struct {
 	transportType        TransportType
 	restUri              string
 	webSocketUri         string
+	autoReconnect        bool
+	reconnectInterval    time.Duration
+	maxReconnect         int
+	checkConnection      bool
 }
 
 type funcOptions struct {
@@ -123,10 +127,38 @@ func WithDefaultCacheTTL(ttl time.Duration) Option {
 	})
 }
 
+// WithAutoReconnect - set automatic reconnection in case of lost connectivity to server
+func WithAutoReconnect(value bool) Option {
+	return newFuncOption(func(o *Options) {
+		o.autoReconnect = value
+	})
+}
+
+// WithReconnectInterval - set reconnection interval duration, default is 5 seconds
+func WithReconnectInterval(duration time.Duration) Option {
+	return newFuncOption(func(o *Options) {
+		o.reconnectInterval = duration
+	})
+}
+
+// WithMaxReconnects - set max reconnects before return error, default 0, never.
+func WithMaxReconnects(value int) Option {
+	return newFuncOption(func(o *Options) {
+		o.maxReconnect = value
+	})
+}
+
 // WithTransportType - set client transport type, currently GRPC or Rest
 func WithTransportType(transportType TransportType) Option {
 	return newFuncOption(func(o *Options) {
 		o.transportType = transportType
+	})
+}
+
+// WithCheckConnection - set server connectivity on client create
+func WithCheckConnection(value bool) Option {
+	return newFuncOption(func(o *Options) {
+		o.checkConnection = value
 	})
 }
 
@@ -136,6 +168,7 @@ func GetDefaultOptions() *Options {
 		port:                 0,
 		isSecured:            false,
 		certFile:             "",
+		certData:             "",
 		serverOverrideDomain: "",
 		authToken:            "",
 		clientId:             "ClientId",
@@ -145,6 +178,10 @@ func GetDefaultOptions() *Options {
 		transportType:        0,
 		restUri:              "",
 		webSocketUri:         "",
+		autoReconnect:        false,
+		reconnectInterval:    5 * time.Second,
+		maxReconnect:         0,
+		checkConnection:      false,
 	}
 }
 

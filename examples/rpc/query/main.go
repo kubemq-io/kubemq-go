@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"github.com/kubemq-io/kubemq-go"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -13,9 +16,11 @@ func main() {
 	defer cancel()
 
 	client, err := kubemq.NewClient(ctx,
-		kubemq.WithUri("http://localhost:9090"),
+		kubemq.WithAddress("localhost", 50000),
 		kubemq.WithClientId("test-query-client-id"),
-		kubemq.WithTransportType(kubemq.TransportTypeRest))
+		kubemq.WithTransportType(kubemq.TransportTypeGRPC),
+		kubemq.WithAutoReconnect(true),
+		kubemq.WithMaxReconnects(5))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -36,7 +41,7 @@ func main() {
 				return
 			case query, more := <-queriesCh:
 				if !more {
-					fmt.Println("Query Received, done")
+					log.Println("Query Received, done")
 					return
 				}
 				log.Printf("Query Received:\nId %s\nChannel: %s\nMetadata: %s\nBody: %s\n", query.Id, query.Channel, query.Metadata, query.Body)
@@ -58,16 +63,32 @@ func main() {
 	}()
 	// give some time to connect a receiver
 	time.Sleep(1 * time.Second)
-	response, err := client.NewQuery().
-		SetId("some-query-id").
-		SetChannel(channel).
-		SetMetadata("some-metadata").
-		SetBody([]byte("hello kubemq - sending a query, please reply")).
-		SetTimeout(1 * time.Second).
-		Send(ctx)
-	if err != nil {
-		log.Fatal(err)
+	var gracefulShutdown = make(chan os.Signal, 1)
+	signal.Notify(gracefulShutdown, syscall.SIGTERM)
+	signal.Notify(gracefulShutdown, syscall.SIGINT)
+	signal.Notify(gracefulShutdown, syscall.SIGQUIT)
+	counter := 0
+	for {
+		counter++
+		response, err := client.NewQuery().
+			SetId("some-query-id").
+			SetChannel(channel).
+			SetMetadata("some-metadata").
+			SetBody([]byte("hello kubemq - sending a query, please reply")).
+			SetTimeout(1 * time.Second).
+			Send(ctx)
+		if err != nil {
+			log.Println(fmt.Sprintf("error sending query %d, error: %s", counter, err))
+		} else {
+			log.Printf("Response Received:\nQueryID: %s\nExecutedAt:%s\nMetadata: %s\nBody: %s\n", response.QueryId, response.ExecutedAt, response.Metadata, response.Body)
+		}
+
+		select {
+		case <-gracefulShutdown:
+			break
+		default:
+			time.Sleep(time.Second)
+		}
 	}
-	log.Printf("Response Received:\nQueryID: %s\nExecutedAt:%s\nMetadat: %s\nBody: %s\n", response.QueryId, response.ExecutedAt, response.Metadata, response.Body)
 
 }

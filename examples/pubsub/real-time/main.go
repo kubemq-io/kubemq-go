@@ -1,9 +1,13 @@
-package real_time
+package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/kubemq-io/kubemq-go"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -13,15 +17,21 @@ func main() {
 	sender, err := kubemq.NewClient(ctx,
 		kubemq.WithAddress("localhost", 50000),
 		kubemq.WithClientId("test-event-grpc-client"),
-		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
+		kubemq.WithTransportType(kubemq.TransportTypeGRPC),
+		kubemq.WithAutoReconnect(true),
+		kubemq.WithMaxReconnects(2))
+
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer sender.Close()
 	receiverA, err := kubemq.NewClient(ctx,
-		kubemq.WithUri("http://localhost:9090"),
-		kubemq.WithClientId("test-event-rest-client"),
-		kubemq.WithTransportType(kubemq.TransportTypeRest))
+		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithClientId("test-event-grpc-client-receiver-a"),
+		kubemq.WithTransportType(kubemq.TransportTypeGRPC),
+		kubemq.WithAutoReconnect(true),
+		kubemq.WithMaxReconnects(2))
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -29,9 +39,12 @@ func main() {
 	defer receiverA.Close()
 
 	receiverB, err := kubemq.NewClient(ctx,
-		kubemq.WithUri("http://localhost:9090"),
-		kubemq.WithClientId("test-event-rest-client"),
-		kubemq.WithTransportType(kubemq.TransportTypeRest))
+		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithClientId("test-event-grpc-client-receiver-b"),
+		kubemq.WithTransportType(kubemq.TransportTypeGRPC),
+		kubemq.WithAutoReconnect(true),
+		kubemq.WithMaxReconnects(2))
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -87,30 +100,30 @@ func main() {
 			}
 		}
 	}()
-	// wait for receiver ready
 	time.Sleep(100 * time.Millisecond)
-	err = sender.E().
-		SetId("some-id").
-		SetChannel(channelName).
-		SetMetadata("some-metadata").
-		SetBody([]byte("hello kubemq - sending single event")).
-		Send(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	eventStreamCh := make(chan *kubemq.Event, 1)
-	errStreamCh := make(chan error, 1)
-	go sender.StreamEvents(ctx, eventStreamCh, errStreamCh)
-	event := sender.E().SetId("some-event-id").
-		SetChannel(channelName).
-		SetMetadata("some-metadata").
-		SetBody([]byte("hello kubemq - sending stream event"))
-	select {
-	case err := <-errStreamCh:
-		log.Println(err)
-	case eventStreamCh <- event:
-	}
+	var gracefulShutdown = make(chan os.Signal, 1)
+	signal.Notify(gracefulShutdown, syscall.SIGTERM)
+	signal.Notify(gracefulShutdown, syscall.SIGINT)
+	signal.Notify(gracefulShutdown, syscall.SIGQUIT)
+	counter := 0
+	for {
+		counter++
+		err = sender.E().
+			SetId("some-id").
+			SetChannel(channelName).
+			SetMetadata("some-metadata").
+			SetBody([]byte(fmt.Sprintf("hello kubemq - sending event %d", counter))).
+			Send(ctx)
+		if err != nil {
+			log.Println(fmt.Sprintf("error sedning event %d, error: %s", counter, err))
 
-	time.Sleep(1 * time.Second)
+		}
+		select {
+		case <-gracefulShutdown:
+			break
+		default:
+			time.Sleep(time.Second)
+		}
+	}
 
 }

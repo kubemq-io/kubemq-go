@@ -3,8 +3,10 @@ package kubemq
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"github.com/nats-io/nuid"
+	"go.uber.org/atomic"
 	"io"
 	"time"
 
@@ -21,10 +23,15 @@ const (
 
 )
 
+var (
+	errConnectionClosed = errors.New("connection closed locally")
+)
+
 type gRPCTransport struct {
-	opts   *Options
-	conn   *grpc.ClientConn
-	client pb.KubemqClient
+	opts     *Options
+	conn     *grpc.ClientConn
+	client   pb.KubemqClient
+	isClosed *atomic.Bool
 }
 
 func newGRPCTransport(ctx context.Context, opts *Options) (Transport, *ServerInfo, error) {
@@ -54,9 +61,10 @@ func newGRPCTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 	}
 	address := fmt.Sprintf("%s:%d", opts.host, opts.port)
 	g := &gRPCTransport{
-		opts:   opts,
-		conn:   nil,
-		client: nil,
+		opts:     opts,
+		conn:     nil,
+		client:   nil,
+		isClosed: atomic.NewBool(false),
 	}
 	connOptions = append(connOptions, grpc.WithUnaryInterceptor(g.SetUnaryInterceptor()), grpc.WithStreamInterceptor(g.SetStreamInterceptor()))
 
@@ -75,12 +83,16 @@ func newGRPCTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 	}()
 	g.client = pb.NewKubemqClient(g.conn)
 
-	si, err := g.Ping(ctx)
-	if err != nil {
-		return nil, &ServerInfo{}, err
+	if g.opts.checkConnection {
+		si, err := g.Ping(ctx)
+		if err != nil {
+			return nil, &ServerInfo{}, err
+		}
+		return g, si, nil
+	} else {
+		return g, &ServerInfo{}, nil
 	}
 
-	return g, si, nil
 }
 
 func (g *gRPCTransport) SetUnaryInterceptor() grpc.UnaryClientInterceptor {
@@ -115,7 +127,9 @@ func (g *gRPCTransport) Ping(ctx context.Context) (*ServerInfo, error) {
 }
 
 func (g *gRPCTransport) SendEvent(ctx context.Context, event *Event) error {
-
+	if g.isClosed.Load() {
+		return errConnectionClosed
+	}
 	result, err := g.client.SendEvent(ctx, &pb.Event{
 		EventID:  event.Id,
 		ClientID: event.ClientId,
@@ -179,7 +193,6 @@ func (g *gRPCTransport) StreamEvents(ctx context.Context, eventsCh chan *Event, 
 	}
 
 }
-
 func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, channel, group string, errCh chan error) (<-chan *Event, error) {
 	eventsCh := make(chan *Event, g.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
@@ -188,28 +201,43 @@ func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, channel, group st
 		Channel:           channel,
 		Group:             group,
 	}
-	stream, err := g.client.SubscribeToEvents(ctx, subRequest)
-	if err != nil {
-		return nil, err
-	}
+
 	go func() {
+		retries := atomic.NewUint32(0)
 		for {
-			event, err := stream.Recv()
-			if err != nil {
-				errCh <- err
-				close(eventsCh)
-				return
-			}
+			internalErrCh := make(chan error, 1)
+			retries.Inc()
+			go func() {
+				readyCh := make(chan bool, 1)
+				g.subscribeToEvents(ctx, subRequest, eventsCh, internalErrCh, readyCh)
+				for {
+					select {
+					case <-readyCh:
+						retries.Store(0)
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+
 			select {
-			case eventsCh <- &Event{
-				Id:        event.EventID,
-				Channel:   event.Channel,
-				Metadata:  event.Metadata,
-				Body:      event.Body,
-				ClientId:  g.opts.clientId,
-				Tags:      event.Tags,
-				transport: nil,
-			}:
+			case err := <-internalErrCh:
+				if g.isClosed.Load() {
+					errCh <- errConnectionClosed
+					return
+				}
+				if !g.opts.autoReconnect {
+					errCh <- err
+					return
+				} else {
+					if g.opts.maxReconnect == 0 || int(retries.Load()) <= g.opts.maxReconnect {
+						time.Sleep(g.opts.reconnectInterval)
+						continue
+					}
+					errCh <- fmt.Errorf("max reconnects reached, aborting")
+					close(eventsCh)
+					return
+				}
 			case <-ctx.Done():
 				return
 			}
@@ -217,6 +245,34 @@ func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, channel, group st
 		}
 	}()
 	return eventsCh, nil
+}
+func (g *gRPCTransport) subscribeToEvents(ctx context.Context, subRequest *pb.Subscribe, eventsCh chan *Event, errCh chan error, readyCh chan bool) {
+	stream, err := g.client.SubscribeToEvents(ctx, subRequest)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	readyCh <- true
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		select {
+		case eventsCh <- &Event{
+			Id:        event.EventID,
+			Channel:   event.Channel,
+			Metadata:  event.Metadata,
+			Body:      event.Body,
+			ClientId:  g.opts.clientId,
+			Tags:      event.Tags,
+			transport: nil,
+		}:
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (g *gRPCTransport) SendEventStore(ctx context.Context, eventStore *EventStore) (*EventStoreResult, error) {
@@ -312,29 +368,42 @@ func (g *gRPCTransport) SubscribeToEventsStore(ctx context.Context, channel, gro
 		EventsStoreTypeData:  subOption.kind,
 		EventsStoreTypeValue: subOption.value,
 	}
-	stream, err := g.client.SubscribeToEvents(ctx, subRequest)
-	if err != nil {
-		return nil, err
-	}
 	go func() {
+		retries := atomic.NewUint32(0)
 		for {
-			event, err := stream.Recv()
-			if err != nil {
-				errCh <- err
-				close(eventsReceiveCh)
-				return
-			}
+			internalErrCh := make(chan error, 1)
+			retries.Inc()
+			go func() {
+				readyCh := make(chan bool, 1)
+				g.subscribeToEventsStore(ctx, subRequest, eventsReceiveCh, internalErrCh, readyCh)
+				for {
+					select {
+					case <-readyCh:
+						retries.Store(0)
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+
 			select {
-			case eventsReceiveCh <- &EventStoreReceive{
-				Id:        event.EventID,
-				Sequence:  event.Sequence,
-				Timestamp: time.Unix(0, event.Timestamp),
-				Channel:   event.Channel,
-				Metadata:  event.Metadata,
-				Body:      event.Body,
-				ClientId:  g.opts.clientId,
-				Tags:      event.Tags,
-			}:
+			case err := <-internalErrCh:
+				if g.isClosed.Load() {
+					errCh <- errConnectionClosed
+					return
+				}
+				if !g.opts.autoReconnect {
+					errCh <- err
+					return
+				} else {
+					if g.opts.maxReconnect == 0 || int(retries.Load()) <= g.opts.maxReconnect {
+						time.Sleep(g.opts.reconnectInterval)
+						continue
+					}
+					errCh <- fmt.Errorf("max reconnects reached, aborting")
+					close(eventsReceiveCh)
+					return
+				}
 			case <-ctx.Done():
 				return
 			}
@@ -344,8 +413,41 @@ func (g *gRPCTransport) SubscribeToEventsStore(ctx context.Context, channel, gro
 	return eventsReceiveCh, nil
 }
 
-func (g *gRPCTransport) SendCommand(ctx context.Context, command *Command) (*CommandResponse, error) {
+func (g *gRPCTransport) subscribeToEventsStore(ctx context.Context, subRequest *pb.Subscribe, eventsCh chan *EventStoreReceive, errCh chan error, readyCh chan bool) {
 
+	stream, err := g.client.SubscribeToEvents(ctx, subRequest)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	readyCh <- true
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		select {
+		case eventsCh <- &EventStoreReceive{
+			Id:        event.EventID,
+			Sequence:  event.Sequence,
+			Timestamp: time.Unix(0, event.Timestamp),
+			Channel:   event.Channel,
+			Metadata:  event.Metadata,
+			Body:      event.Body,
+			ClientId:  g.opts.clientId,
+			Tags:      event.Tags,
+		}:
+		case <-ctx.Done():
+			return
+		}
+
+	}
+}
+func (g *gRPCTransport) SendCommand(ctx context.Context, command *Command) (*CommandResponse, error) {
+	if g.isClosed.Load() {
+		return nil, errConnectionClosed
+	}
 	grpcRequest := &pb.Request{
 		RequestID:       command.Id,
 		RequestTypeData: pb.Command,
@@ -390,36 +492,82 @@ func (g *gRPCTransport) SubscribeToCommands(ctx context.Context, channel, group 
 		Channel:           channel,
 		Group:             group,
 	}
-	stream, err := g.client.SubscribeToRequests(ctx, subRequest)
-	if err != nil {
-		return nil, err
-	}
 	go func() {
+		retries := atomic.NewUint32(0)
 		for {
-			command, err := stream.Recv()
-			if err != nil {
-				errCh <- err
-				close(commandsCh)
-				return
-			}
+			internalErrCh := make(chan error, 1)
+			retries.Inc()
+			go func() {
+				readyCh := make(chan bool, 1)
+				g.subscribeToCommands(ctx, subRequest, commandsCh, internalErrCh, readyCh)
+				for {
+					select {
+					case <-readyCh:
+						retries.Store(0)
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+
 			select {
-			case commandsCh <- &CommandReceive{
-				Id:         command.RequestID,
-				Channel:    command.Channel,
-				Metadata:   command.Metadata,
-				Body:       command.Body,
-				ResponseTo: command.ReplyChannel,
-				Tags:       command.Tags,
-			}:
+			case err := <-internalErrCh:
+				if g.isClosed.Load() {
+					errCh <- errConnectionClosed
+					return
+				}
+				if !g.opts.autoReconnect {
+					errCh <- err
+					return
+				} else {
+					if g.opts.maxReconnect == 0 || int(retries.Load()) <= g.opts.maxReconnect {
+						time.Sleep(g.opts.reconnectInterval)
+						continue
+					}
+					errCh <- fmt.Errorf("max reconnects reached, aborting")
+					close(commandsCh)
+					return
+				}
 			case <-ctx.Done():
 				return
 			}
+
 		}
 	}()
 	return commandsCh, nil
 }
+func (g *gRPCTransport) subscribeToCommands(ctx context.Context, subRequest *pb.Subscribe, commandsCh chan *CommandReceive, errCh chan error, readyCh chan bool) {
 
+	stream, err := g.client.SubscribeToRequests(ctx, subRequest)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	readyCh <- true
+	for {
+		command, err := stream.Recv()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		select {
+		case commandsCh <- &CommandReceive{
+			Id:         command.RequestID,
+			Channel:    command.Channel,
+			Metadata:   command.Metadata,
+			Body:       command.Body,
+			ResponseTo: command.ReplyChannel,
+			Tags:       command.Tags,
+		}:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
 func (g *gRPCTransport) SendQuery(ctx context.Context, query *Query) (*QueryResponse, error) {
+	if g.isClosed.Load() {
+		return nil, errConnectionClosed
+	}
 	grpcRequest := &pb.Request{
 		RequestID:       query.Id,
 		RequestTypeData: pb.Query,
@@ -460,43 +608,85 @@ func (g *gRPCTransport) SendQuery(ctx context.Context, query *Query) (*QueryResp
 }
 
 func (g *gRPCTransport) SubscribeToQueries(ctx context.Context, channel, group string, errCh chan error) (<-chan *QueryReceive, error) {
-	if errCh == nil {
-		return nil, fmt.Errorf("error channel cannot be nil")
-	}
-	queriesCH := make(chan *QueryReceive, g.opts.receiveBufferSize)
+	queriesCh := make(chan *QueryReceive, g.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
 		SubscribeTypeData: pb.Queries,
 		ClientID:          g.opts.clientId,
 		Channel:           channel,
 		Group:             group,
 	}
-	stream, err := g.client.SubscribeToRequests(ctx, subRequest)
-	if err != nil {
-		return nil, err
-	}
 	go func() {
+
+		retries := atomic.NewUint32(0)
 		for {
-			query, err := stream.Recv()
-			if err != nil {
-				errCh <- err
-				close(queriesCH)
+			internalErrCh := make(chan error, 1)
+			retries.Inc()
+			go func() {
+				readyCh := make(chan bool, 1)
+				g.subscribeToQueries(ctx, subRequest, queriesCh, internalErrCh, readyCh)
+				for {
+					select {
+					case <-readyCh:
+						retries.Store(0)
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+
+			select {
+			case err := <-internalErrCh:
+				if g.isClosed.Load() {
+					errCh <- errConnectionClosed
+					return
+				}
+				if !g.opts.autoReconnect {
+					errCh <- err
+					return
+				} else {
+					if g.opts.maxReconnect == 0 || int(retries.Load()) <= g.opts.maxReconnect {
+						time.Sleep(g.opts.reconnectInterval)
+						continue
+					}
+					errCh <- fmt.Errorf("max reconnects reached, aborting")
+					close(queriesCh)
+					return
+				}
+			case <-ctx.Done():
 				return
 			}
-			queriesCH <- &QueryReceive{
-				Id:         query.RequestID,
-				Channel:    query.Channel,
-				Metadata:   query.Metadata,
-				Body:       query.Body,
-				ResponseTo: query.ReplyChannel,
-				Tags:       query.Tags,
-			}
+
 		}
 	}()
-	return queriesCH, nil
+	return queriesCh, nil
 }
-
+func (g *gRPCTransport) subscribeToQueries(ctx context.Context, subRequest *pb.Subscribe, queriesCH chan *QueryReceive, errCh chan error, readyCh chan bool) {
+	stream, err := g.client.SubscribeToRequests(ctx, subRequest)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	readyCh <- true
+	for {
+		query, err := stream.Recv()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		queriesCH <- &QueryReceive{
+			Id:         query.RequestID,
+			Channel:    query.Channel,
+			Metadata:   query.Metadata,
+			Body:       query.Body,
+			ResponseTo: query.ReplyChannel,
+			Tags:       query.Tags,
+		}
+	}
+}
 func (g *gRPCTransport) SendResponse(ctx context.Context, response *Response) error {
-
+	if g.isClosed.Load() {
+		return errConnectionClosed
+	}
 	grpcResponse := &pb.Response{
 		ClientID:             response.ClientId,
 		RequestID:            response.RequestId,
@@ -531,6 +721,9 @@ func (g *gRPCTransport) SendResponse(ctx context.Context, response *Response) er
 }
 
 func (g *gRPCTransport) SendQueueMessage(ctx context.Context, msg *QueueMessage) (*SendQueueMessageResult, error) {
+	if g.isClosed.Load() {
+		return nil, errConnectionClosed
+	}
 	result, err := g.client.SendQueueMessage(ctx, msg.QueueMessage)
 	if err != nil {
 		return nil, err
@@ -549,6 +742,9 @@ func (g *gRPCTransport) SendQueueMessage(ctx context.Context, msg *QueueMessage)
 }
 
 func (g *gRPCTransport) SendQueueMessages(ctx context.Context, msgs []*QueueMessage) ([]*SendQueueMessageResult, error) {
+	if g.isClosed.Load() {
+		return nil, errConnectionClosed
+	}
 	br := &pb.QueueMessagesBatchRequest{
 		BatchID:  nuid.New().Next(),
 		Messages: []*pb.QueueMessage{},
@@ -579,6 +775,9 @@ func (g *gRPCTransport) SendQueueMessages(ctx context.Context, msgs []*QueueMess
 }
 
 func (g *gRPCTransport) ReceiveQueueMessages(ctx context.Context, req *ReceiveQueueMessagesRequest) (*ReceiveQueueMessagesResponse, error) {
+	if g.isClosed.Load() {
+		return nil, errConnectionClosed
+	}
 	response, err := g.client.ReceiveQueueMessages(ctx, &pb.ReceiveQueueMessagesRequest{
 		RequestID:           req.RequestID,
 		ClientID:            req.ClientID,
@@ -617,6 +816,9 @@ func (g *gRPCTransport) ReceiveQueueMessages(ctx context.Context, req *ReceiveQu
 }
 
 func (g *gRPCTransport) AckAllQueueMessages(ctx context.Context, req *AckAllQueueMessagesRequest) (*AckAllQueueMessagesResponse, error) {
+	if g.isClosed.Load() {
+		return nil, errConnectionClosed
+	}
 	result, err := g.client.AckAllQueueMessages(ctx, &pb.AckAllQueueMessagesRequest{
 		RequestID:       req.RequestID,
 		ClientID:        req.ClientID,
@@ -648,7 +850,6 @@ func (g *gRPCTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.S
 		doneCh <- true
 	}()
 	go func() {
-
 		for {
 			res, err := stream.Recv()
 			if err != nil {
@@ -689,5 +890,10 @@ func (g *gRPCTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.S
 }
 
 func (g *gRPCTransport) Close() error {
-	return g.conn.Close()
+	err := g.conn.Close()
+	if err != nil {
+		return err
+	}
+	g.isClosed.Store(true)
+	return nil
 }
