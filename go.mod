@@ -9,6 +9,7 @@ require (
 	github.com/nats-io/nuid v1.0.1
 	go.opencensus.io v0.21.0
 	google.golang.org/grpc v1.28.0
+	go.uber.org/atomic v1.6.0
 )
 
 go 1.13
