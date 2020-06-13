@@ -329,3 +329,32 @@ func (c *Client) SQM() *StreamQueueMessage {
 func (c *Client) Ping(ctx context.Context) (*ServerInfo, error) {
 	return c.transport.Ping(ctx)
 }
+
+func (c *Client) SetQueueMessage(qm *QueueMessage) *QueueMessage {
+	qm.transport = c.transport
+	qm.trace = nil
+	return qm
+}
+func (c *Client) SetEvent(e *Event) *Event {
+	e.transport = c.transport
+	return e
+}
+func (c *Client) SetEventStore(es *EventStore) *EventStore {
+	es.transport = c.transport
+	return es
+}
+
+func (c *Client) SetCommand(cmd *Command) *Command {
+	cmd.transport = c.transport
+	return cmd
+}
+
+func (c *Client) SetQuery(query *Query) *Query {
+	query.transport = c.transport
+	return query
+}
+
+func (c *Client) SetResponse(response *Response) *Response {
+	response.transport = c.transport
+	return response
+}
