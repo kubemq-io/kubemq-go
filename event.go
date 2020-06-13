@@ -14,6 +14,10 @@ type Event struct {
 	transport Transport
 }
 
+func NewEvent() *Event {
+	return &Event{}
+}
+
 // SetId - set event id otherwise new random uuid will be set
 func (e *Event) SetId(id string) *Event {
 	e.Id = id

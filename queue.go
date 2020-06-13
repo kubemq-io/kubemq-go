@@ -9,46 +9,28 @@ import (
 
 type QueueMessage struct {
 	*pb.QueueMessage
-	//Id         string
-	//ClientId   string
-	//Channel    string
-	//Metadata   string
-	//Body       []byte
-	//Tags       map[string]string
-	//Attributes *QueueMessageAttributes
-	//Policy     *QueueMessagePolicy
 	transport Transport
 	trace     *Trace
 	stream    *StreamQueueMessage
 }
 
-//
-//func CreateQueueMessageFromPB(msg *pb.QueueMessage) *QueueMessage {
-//	return &QueueMessage{
-//		Id:       msg.MessageID,
-//		ClientId: msg.ClientID,
-//		Channel:  msg.Channel,
-//		Metadata: msg.Metadata,
-//		Body:     msg.Body,
-//		Tags:     msg.Tags,
-//		Attributes: &QueueMessageAttributes{
-//			Timestamp:         msg.Attributes.Timestamp,
-//			Sequence:          msg.Attributes.Sequence,
-//			MD5OfBody:         msg.Attributes.MD5OfBody,
-//			ReceiveCount:      msg.Attributes.ReceiveCount,
-//			ReRouted:          msg.Attributes.ReRouted,
-//			ReRoutedFromQueue: msg.Attributes.ReRoutedFromQueue,
-//			ExpirationAt:      msg.Attributes.ExpirationAt,
-//			DelayedTo:         msg.Attributes.DelayedTo,
-//		},
-//		Policy: &QueueMessagePolicy{
-//			ExpirationSeconds: msg.Policy.ExpirationSeconds,
-//			DelaySeconds:      msg.Policy.DelaySeconds,
-//			MaxReceiveCount:   msg.Policy.MaxReceiveCount,
-//			MaxReceiveQueue:   msg.Policy.MaxReceiveQueue,
-//		},
-//	}
-//}
+func NewQueueMessage() *QueueMessage {
+	return &QueueMessage{
+		QueueMessage: &pb.QueueMessage{
+			MessageID:  "",
+			ClientID:   "",
+			Channel:    "",
+			Metadata:   "",
+			Body:       nil,
+			Tags:       nil,
+			Attributes: nil,
+			Policy:     nil,
+		},
+		transport: nil,
+		trace:     nil,
+		stream:    nil,
+	}
+}
 
 // SetId - set queue message id, otherwise new random uuid will be set
 func (qm *QueueMessage) SetId(id string) *QueueMessage {

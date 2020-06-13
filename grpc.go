@@ -130,6 +130,9 @@ func (g *gRPCTransport) SendEvent(ctx context.Context, event *Event) error {
 	if g.isClosed.Load() {
 		return errConnectionClosed
 	}
+	if event.ClientId == "" && g.opts.clientId != "" {
+		event.ClientId = g.opts.clientId
+	}
 	result, err := g.client.SendEvent(ctx, &pb.Event{
 		EventID:  event.Id,
 		ClientID: event.ClientId,
@@ -174,6 +177,9 @@ func (g *gRPCTransport) StreamEvents(ctx context.Context, eventsCh chan *Event, 
 	for {
 		select {
 		case event := <-eventsCh:
+			if event.ClientId == "" && g.opts.clientId != "" {
+				event.ClientId = g.opts.clientId
+			}
 			err := stream.Send(&pb.Event{
 				EventID:  event.Id,
 				ClientID: event.ClientId,
@@ -276,6 +282,9 @@ func (g *gRPCTransport) subscribeToEvents(ctx context.Context, subRequest *pb.Su
 }
 
 func (g *gRPCTransport) SendEventStore(ctx context.Context, eventStore *EventStore) (*EventStoreResult, error) {
+	if eventStore.ClientId == "" && g.opts.clientId != "" {
+		eventStore.ClientId = g.opts.clientId
+	}
 	result, err := g.client.SendEvent(ctx, &pb.Event{
 		EventID:  eventStore.Id,
 		ClientID: eventStore.ClientId,
@@ -335,15 +344,18 @@ func (g *gRPCTransport) StreamEventsStore(ctx context.Context, eventsCh chan *Ev
 
 	for {
 		select {
-		case event := <-eventsCh:
+		case eventStore := <-eventsCh:
+			if eventStore.ClientId == "" && g.opts.clientId != "" {
+				eventStore.ClientId = g.opts.clientId
+			}
 			err := stream.Send(&pb.Event{
-				EventID:  event.Id,
+				EventID:  eventStore.Id,
 				ClientID: g.opts.clientId,
-				Channel:  event.Channel,
-				Metadata: event.Metadata,
-				Body:     event.Body,
+				Channel:  eventStore.Channel,
+				Metadata: eventStore.Metadata,
+				Body:     eventStore.Body,
 				Store:    true,
-				Tags:     event.Tags,
+				Tags:     eventStore.Tags,
 			})
 			if err != nil {
 				errCh <- err
@@ -447,6 +459,9 @@ func (g *gRPCTransport) subscribeToEventsStore(ctx context.Context, subRequest *
 func (g *gRPCTransport) SendCommand(ctx context.Context, command *Command) (*CommandResponse, error) {
 	if g.isClosed.Load() {
 		return nil, errConnectionClosed
+	}
+	if command.ClientId == "" && g.opts.clientId != "" {
+		command.ClientId = g.opts.clientId
 	}
 	grpcRequest := &pb.Request{
 		RequestID:       command.Id,
@@ -568,6 +583,9 @@ func (g *gRPCTransport) SendQuery(ctx context.Context, query *Query) (*QueryResp
 	if g.isClosed.Load() {
 		return nil, errConnectionClosed
 	}
+	if query.ClientId == "" && g.opts.clientId != "" {
+		query.ClientId = g.opts.clientId
+	}
 	grpcRequest := &pb.Request{
 		RequestID:       query.Id,
 		RequestTypeData: pb.Query,
@@ -687,6 +705,9 @@ func (g *gRPCTransport) SendResponse(ctx context.Context, response *Response) er
 	if g.isClosed.Load() {
 		return errConnectionClosed
 	}
+	if response.ClientId == "" && g.opts.clientId != "" {
+		response.ClientId = g.opts.clientId
+	}
 	grpcResponse := &pb.Response{
 		ClientID:             response.ClientId,
 		RequestID:            response.RequestId,
@@ -724,6 +745,9 @@ func (g *gRPCTransport) SendQueueMessage(ctx context.Context, msg *QueueMessage)
 	if g.isClosed.Load() {
 		return nil, errConnectionClosed
 	}
+	if msg.ClientID == "" && g.opts.clientId != "" {
+		msg.ClientID = g.opts.clientId
+	}
 	result, err := g.client.SendQueueMessage(ctx, msg.QueueMessage)
 	if err != nil {
 		return nil, err
@@ -751,6 +775,9 @@ func (g *gRPCTransport) SendQueueMessages(ctx context.Context, msgs []*QueueMess
 	}
 
 	for _, msg := range msgs {
+		if msg.ClientID == "" && g.opts.clientId != "" {
+			msg.ClientID = g.opts.clientId
+		}
 		br.Messages = append(br.Messages, msg.QueueMessage)
 	}
 	batchResults, err := g.client.SendQueueMessagesBatch(ctx, br)

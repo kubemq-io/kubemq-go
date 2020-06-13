@@ -18,6 +18,10 @@ type Response struct {
 	trace      *Trace
 }
 
+func NewResponse() *Response {
+	return &Response{}
+}
+
 // SetId - set response corresponded requestId - mandatory
 func (r *Response) SetRequestId(id string) *Response {
 	r.RequestId = id

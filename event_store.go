@@ -17,6 +17,10 @@ type EventStore struct {
 	transport Transport
 }
 
+func NewEventStore() *EventStore {
+	return &EventStore{}
+}
+
 // SetId - set event store id otherwise new random uuid will be set
 func (es *EventStore) SetId(id string) *EventStore {
 	es.Id = id

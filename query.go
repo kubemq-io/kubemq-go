@@ -19,6 +19,10 @@ type Query struct {
 	trace     *Trace
 }
 
+func NewQuery() *Query {
+	return &Query{}
+}
+
 // SetId - set query requestId, otherwise new random uuid will be set
 func (q *Query) SetId(id string) *Query {
 	q.Id = id
