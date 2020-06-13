@@ -17,6 +17,10 @@ type Command struct {
 	trace     *Trace
 }
 
+func NewCommand() *Command {
+	return &Command{}
+}
+
 // SetId - set command requestId, otherwise new random uuid will be set
 func (c *Command) SetId(id string) *Command {
 	c.Id = id
