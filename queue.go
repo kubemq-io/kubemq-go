@@ -63,6 +63,15 @@ func (qm *QueueMessage) SetBody(body []byte) *QueueMessage {
 	return qm
 }
 
+// SetTags - set key value tags to queue message
+func (qm *QueueMessage) SetTags(tags map[string]string) *QueueMessage {
+	qm.Tags = map[string]string{}
+	for key, value := range tags {
+		qm.Tags[key] = value
+	}
+	return qm
+}
+
 // AddTag - add key value tags to query message
 func (qm *QueueMessage) AddTag(key, value string) *QueueMessage {
 	qm.Tags[key] = value
@@ -483,8 +492,6 @@ func (req *StreamQueueMessage) reject() error {
 	case getResponse := <-req.resCh:
 		if getResponse.IsError {
 			return errors.New(getResponse.Error)
-		} else {
-
 		}
 	case err := <-req.errCh:
 		return err

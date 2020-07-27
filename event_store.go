@@ -51,6 +51,15 @@ func (es *EventStore) SetBody(body []byte) *EventStore {
 	return es
 }
 
+// SetTags - set key value tags to event store message
+func (es *EventStore) SetTags(tags map[string]string) *EventStore {
+	es.Tags = map[string]string{}
+	for key, value := range tags {
+		es.Tags[key] = value
+	}
+	return es
+}
+
 // AddTag - add key value tags to event store message
 func (es *EventStore) AddTag(key, value string) *EventStore {
 	es.Tags[key] = value
