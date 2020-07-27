@@ -48,6 +48,15 @@ func (e *Event) SetBody(body []byte) *Event {
 	return e
 }
 
+// SetTags - set key value tags to event message
+func (e *Event) SetTags(tags map[string]string) *Event {
+	e.Tags = map[string]string{}
+	for key, value := range tags {
+		e.Tags[key] = value
+	}
+	return e
+}
+
 // AddTag - add key value tags to event message
 func (e *Event) AddTag(key, value string) *Event {
 	e.Tags[key] = value
