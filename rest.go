@@ -653,13 +653,13 @@ func (rt *restTransport) AckAllQueueMessages(ctx context.Context, req *AckAllQue
 }
 
 func (rt *restTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.StreamQueueMessagesRequest, resCh chan *pb.StreamQueueMessagesResponse, errCh chan error, doneCh chan bool) {
-
+	newCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	uri := fmt.Sprintf("%s/queue/stream", rt.wsAddress)
 	readCh := make(chan string)
 	writeCh := make(chan []byte)
 	ready := make(chan struct{}, 1)
 	wsErrCh := make(chan error, 1)
-	newCtx, cancel := context.WithCancel(ctx)
 	conn, err := newBiDirectionalWebsocketConn(newCtx, uri, readCh, writeCh, ready, wsErrCh, rt.opts.authToken)
 	if err != nil {
 		errCh <- err
@@ -669,7 +669,7 @@ func (rt *restTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.
 	<-ready
 
 	defer func() {
-		cancel()
+
 		doneCh <- true
 
 	}()

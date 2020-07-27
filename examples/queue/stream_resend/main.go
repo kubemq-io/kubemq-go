@@ -64,7 +64,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+	log.Printf("MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 	log.Println("resend with new message")
 	newMsg := receiverA.NewQueueMessage().SetChannel(channel).SetBody([]byte("new message"))
 	err = stream.ResendWithNewMessage(newMsg)
@@ -80,7 +80,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("MessageID: %s, Body: %s", msg.Id, string(msg.Body))
+	log.Printf("MessageID: %s, Body: %s", msg.MessageID, string(msg.Body))
 
 	err = msg.Ack()
 	if err != nil {

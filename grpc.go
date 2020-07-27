@@ -159,7 +159,9 @@ func (g *gRPCTransport) StreamEvents(ctx context.Context, eventsCh chan *Event, 
 		errCh <- err
 		return
 	}
-	defer stream.CloseSend()
+	defer func() {
+		_ = stream.CloseSend()
+	}()
 	go func() {
 		for {
 			result, err := stream.Recv()
@@ -316,7 +318,9 @@ func (g *gRPCTransport) StreamEventsStore(ctx context.Context, eventsCh chan *Ev
 		errCh <- err
 		return
 	}
-	defer stream.CloseSend()
+	defer func() {
+		_ = stream.CloseSend()
+	}()
 	go func() {
 		for {
 			result, err := stream.Recv()

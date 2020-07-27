@@ -57,6 +57,15 @@ func (c *Command) SetTimeout(timeout time.Duration) *Command {
 	return c
 }
 
+// SetTags - set key value tags to command message
+func (c *Command) SetTags(tags map[string]string) *Command {
+	c.Tags = map[string]string{}
+	for key, value := range tags {
+		c.Tags[key] = value
+	}
+	return c
+}
+
 // AddTag - add key value tags to command message
 func (c *Command) AddTag(key, value string) *Command {
 	c.Tags[key] = value
