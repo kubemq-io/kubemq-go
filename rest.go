@@ -451,6 +451,7 @@ func (rt *restTransport) SubscribeToCommands(ctx context.Context, channel, group
 
 				commandCh <- &CommandReceive{
 					Id:         request.RequestID,
+					ClientId:   request.ClientID,
 					Channel:    request.Channel,
 					Metadata:   request.Metadata,
 					Body:       request.Body,
@@ -520,6 +521,7 @@ func (rt *restTransport) SubscribeToQueries(ctx context.Context, channel, group 
 				}
 				queryCh <- &QueryReceive{
 					Id:         request.RequestID,
+					ClientId:   request.ClientID,
 					Channel:    request.Channel,
 					Metadata:   request.Metadata,
 					Body:       request.Body,
