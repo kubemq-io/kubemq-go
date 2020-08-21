@@ -571,6 +571,7 @@ func (g *gRPCTransport) subscribeToCommands(ctx context.Context, subRequest *pb.
 		}
 		select {
 		case commandsCh <- &CommandReceive{
+			ClientId:   command.ClientID,
 			Id:         command.RequestID,
 			Channel:    command.Channel,
 			Metadata:   command.Metadata,
@@ -697,6 +698,7 @@ func (g *gRPCTransport) subscribeToQueries(ctx context.Context, subRequest *pb.S
 		}
 		queriesCH <- &QueryReceive{
 			Id:         query.RequestID,
+			ClientId:   query.ClientID,
 			Channel:    query.Channel,
 			Metadata:   query.Metadata,
 			Body:       query.Body,
