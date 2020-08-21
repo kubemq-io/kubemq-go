@@ -103,6 +103,7 @@ func (q *Query) AddTrace(name string) *Trace {
 type QueryReceive struct {
 	Id         string
 	Channel    string
+	ClientId   string
 	Metadata   string
 	Body       []byte
 	ResponseTo string

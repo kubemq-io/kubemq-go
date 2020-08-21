@@ -52,7 +52,7 @@ func main() {
 	for i := 10; i < 20; i++ {
 		event := sender.ES().
 			SetId(fmt.Sprintf("event-store-%d", i)).
-			SetChannel(channelName).
+			SetChannel("queues:channel1;queues:channel2;queues:channel3;events:channel1").
 			SetMetadata("some-metadata").
 			SetBody([]byte("hello kubemq - sending stream event to store"))
 		eventsStoreStreamCh <- event

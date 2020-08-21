@@ -19,8 +19,16 @@ func main() {
 		log.Fatal(err)
 	}
 	defer client.Close()
-	channel := "testing_queue_channel"
 
+	sendingCh := make(chan *kubemq.QueueMessage)
+	go func() {
+		for {
+			sendingCh <- kubemq.NewQueueMessage().SetChannel("abc").SetBody([]byte(""))
+		}
+
+	}()
+
+	channel := "testing_queue_channel"
 	batch := client.NewQueueMessages()
 	for i := 0; i < 10; i++ {
 		batch.Add(client.NewQueueMessage().

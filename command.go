@@ -88,6 +88,7 @@ func (c *Command) Send(ctx context.Context) (*CommandResponse, error) {
 
 type CommandReceive struct {
 	Id         string
+	ClientId   string
 	Channel    string
 	Metadata   string
 	Body       []byte
