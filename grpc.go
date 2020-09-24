@@ -154,6 +154,7 @@ func (g *gRPCTransport) SendEvent(ctx context.Context, event *Event) error {
 func (g *gRPCTransport) StreamEvents(ctx context.Context, eventsCh chan *Event, errCh chan error) {
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	quit := make(chan struct{}, 1)
 	stream, err := g.client.SendEventsStream(streamCtx)
 	if err != nil {
 		errCh <- err
@@ -167,6 +168,7 @@ func (g *gRPCTransport) StreamEvents(ctx context.Context, eventsCh chan *Event, 
 			result, err := stream.Recv()
 			if err != nil {
 				errCh <- err
+				quit <- struct{}{}
 				cancel()
 				return
 			}
@@ -195,6 +197,8 @@ func (g *gRPCTransport) StreamEvents(ctx context.Context, eventsCh chan *Event, 
 				errCh <- err
 				return
 			}
+		case <-quit:
+			return
 		case <-ctx.Done():
 			return
 		}
@@ -214,6 +218,7 @@ func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, channel, group st
 		retries := atomic.NewUint32(0)
 		for {
 			internalErrCh := make(chan error, 1)
+			quit := make(chan struct{}, 1)
 			retries.Inc()
 			go func() {
 				readyCh := make(chan bool, 1)
@@ -222,6 +227,8 @@ func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, channel, group st
 					select {
 					case <-readyCh:
 						retries.Store(0)
+					case <-quit:
+						return
 					case <-ctx.Done():
 						return
 					}
@@ -230,6 +237,7 @@ func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, channel, group st
 
 			select {
 			case err := <-internalErrCh:
+				quit <- struct{}{}
 				if g.isClosed.Load() {
 					errCh <- errConnectionClosed
 					return
@@ -313,6 +321,7 @@ func (g *gRPCTransport) SendEventStore(ctx context.Context, eventStore *EventSto
 func (g *gRPCTransport) StreamEventsStore(ctx context.Context, eventsCh chan *EventStore, eventsResultCh chan *EventStoreResult, errCh chan error) {
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	quit := make(chan struct{}, 1)
 	stream, err := g.client.SendEventsStream(streamCtx)
 	if err != nil {
 		errCh <- err
@@ -326,6 +335,7 @@ func (g *gRPCTransport) StreamEventsStore(ctx context.Context, eventsCh chan *Ev
 			result, err := stream.Recv()
 			if err != nil {
 				errCh <- err
+				quit <- struct{}{}
 				cancel()
 				return
 			}
@@ -339,6 +349,8 @@ func (g *gRPCTransport) StreamEventsStore(ctx context.Context, eventsCh chan *Ev
 			}
 			select {
 			case eventsResultCh <- eventResult:
+			case <-quit:
+				return
 			case <-ctx.Done():
 				return
 			}
@@ -388,6 +400,7 @@ func (g *gRPCTransport) SubscribeToEventsStore(ctx context.Context, channel, gro
 		retries := atomic.NewUint32(0)
 		for {
 			internalErrCh := make(chan error, 1)
+			quit := make(chan struct{}, 1)
 			retries.Inc()
 			go func() {
 				readyCh := make(chan bool, 1)
@@ -396,6 +409,8 @@ func (g *gRPCTransport) SubscribeToEventsStore(ctx context.Context, channel, gro
 					select {
 					case <-readyCh:
 						retries.Store(0)
+					case <-quit:
+						return
 					case <-ctx.Done():
 						return
 					}
@@ -404,6 +419,7 @@ func (g *gRPCTransport) SubscribeToEventsStore(ctx context.Context, channel, gro
 
 			select {
 			case err := <-internalErrCh:
+				quit <- struct{}{}
 				if g.isClosed.Load() {
 					errCh <- errConnectionClosed
 					return
@@ -515,6 +531,7 @@ func (g *gRPCTransport) SubscribeToCommands(ctx context.Context, channel, group 
 		retries := atomic.NewUint32(0)
 		for {
 			internalErrCh := make(chan error, 1)
+			quit := make(chan struct{}, 1)
 			retries.Inc()
 			go func() {
 				readyCh := make(chan bool, 1)
@@ -523,6 +540,8 @@ func (g *gRPCTransport) SubscribeToCommands(ctx context.Context, channel, group 
 					select {
 					case <-readyCh:
 						retries.Store(0)
+					case <-quit:
+						return
 					case <-ctx.Done():
 						return
 					}
@@ -531,6 +550,7 @@ func (g *gRPCTransport) SubscribeToCommands(ctx context.Context, channel, group 
 
 			select {
 			case err := <-internalErrCh:
+				quit <- struct{}{}
 				if g.isClosed.Load() {
 					errCh <- errConnectionClosed
 					return
@@ -643,6 +663,7 @@ func (g *gRPCTransport) SubscribeToQueries(ctx context.Context, channel, group s
 		retries := atomic.NewUint32(0)
 		for {
 			internalErrCh := make(chan error, 1)
+			quit := make(chan struct{}, 1)
 			retries.Inc()
 			go func() {
 				readyCh := make(chan bool, 1)
@@ -651,6 +672,8 @@ func (g *gRPCTransport) SubscribeToQueries(ctx context.Context, channel, group s
 					select {
 					case <-readyCh:
 						retries.Store(0)
+					case <-quit:
+						return
 					case <-ctx.Done():
 						return
 					}
@@ -659,6 +682,7 @@ func (g *gRPCTransport) SubscribeToQueries(ctx context.Context, channel, group s
 
 			select {
 			case err := <-internalErrCh:
+				quit <- struct{}{}
 				if g.isClosed.Load() {
 					errCh <- errConnectionClosed
 					return
