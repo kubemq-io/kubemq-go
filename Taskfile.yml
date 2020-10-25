@@ -1,0 +1,29 @@
+# github.com/go-task/task
+
+version: '2'
+
+vars:
+  BINARY_NAME: kubemq-go
+  VERSION: v1.4.4
+
+tasks:
+  check_update:
+    cmds:
+      - go list -u -m -json -mod=mod all | go-mod-outdated -update -direct
+  lint:
+    cmds:
+      - golangci-lint run --disable gocritic --enable misspell
+  commit-modifed:
+    cmds:
+      - git add -A
+      - git commit -a -m "release {{.VERSION}}"
+      - git push origin master
+  tag:
+    cmds:
+      - git tag -a {{.VERSION}} -m {{.VERSION}}
+      - git push origin master --tags
+  release:
+    cmds:
+      - task: lint
+      - task: commit-modifed
+      - task: tag
