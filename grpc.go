@@ -86,6 +86,7 @@ func newGRPCTransport(ctx context.Context, opts *Options) (Transport, *ServerInf
 	if g.opts.checkConnection {
 		si, err := g.Ping(ctx)
 		if err != nil {
+			_ = g.Close()
 			return nil, &ServerInfo{}, err
 		}
 		return g, si, nil
