@@ -56,6 +56,7 @@ func newWebsocketConn(ctx context.Context, uri string, readCh chan string, ready
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
+				errCh <- err
 				return
 			}
 			select {
