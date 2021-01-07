@@ -3,8 +3,9 @@ package kubemq
 import (
 	"context"
 	"errors"
-	pb "github.com/kubemq-io/protobuf/go"
 	"time"
+
+	pb "github.com/kubemq-io/protobuf/go"
 )
 
 type QueueMessage struct {
@@ -80,24 +81,36 @@ func (qm *QueueMessage) AddTag(key, value string) *QueueMessage {
 
 // SetPolicyExpirationSeconds - set queue message expiration seconds, 0 never expires
 func (qm *QueueMessage) SetPolicyExpirationSeconds(sec int) *QueueMessage {
+	if qm.Policy == nil {
+		qm.Policy = &pb.QueueMessagePolicy{}
+	}
 	qm.Policy.ExpirationSeconds = int32(sec)
 	return qm
 }
 
 // SetPolicyDelaySeconds - set queue message delivery delay in seconds, 0 , immediate delivery
 func (qm *QueueMessage) SetPolicyDelaySeconds(sec int) *QueueMessage {
+	if qm.Policy == nil {
+		qm.Policy = &pb.QueueMessagePolicy{}
+	}
 	qm.Policy.DelaySeconds = int32(sec)
 	return qm
 }
 
 // SetPolicyMaxReceiveCount - set max delivery attempts before message will discard or re-route to a new queue
 func (qm *QueueMessage) SetPolicyMaxReceiveCount(max int) *QueueMessage {
+	if qm.Policy == nil {
+		qm.Policy = &pb.QueueMessagePolicy{}
+	}
 	qm.Policy.MaxReceiveCount = int32(max)
 	return qm
 }
 
 // SetPolicyMaxReceiveQueue - set queue name to be routed once MaxReceiveCount is triggered, empty will discard the message
 func (qm *QueueMessage) SetPolicyMaxReceiveQueue(channel string) *QueueMessage {
+	if qm.Policy == nil {
+		qm.Policy = &pb.QueueMessagePolicy{}
+	}
 	qm.Policy.MaxReceiveQueue = channel
 	return qm
 }
