@@ -1,25 +1,27 @@
 # Go
 KubeMQ is an enterprise-grade message queue and broker for containers, designed for any workload and architecture running in Kubernetes.
 This library is Go implementation of KubeMQ client connection.
-## Installation
 
-KubeMQ Go SDK requires a Go version capable of understanding /vN suffixed imports:
-- 1.9.7+
-- 1.10.3+
-- 1.11+
+## Get Started
 
+### Deploy KubeMQ Cluster
+#### Option 1:
+Get KubeMQ Cluster with default settings - [Quick Start](https://kubemq.io/quick-start/)
 
-``` bash
-# Go Modules
-require github.com/kubemq-io/kubemq-go v1.3.2
+#### Option 2:
+Build and Deploy KubeMQ Cluster with advanced configurations - [Build & Deploy](https://build.kubemq.io/)
+
+### Port-Forward KubeMQ Grpc Interface
+
+Use kubectl to port-forward kubemq grpc interface 
+```
+kubectl port-forward svc/kubemq-cluster-grpc 50000:50000 -n kubemq
 ```
 
-## Documentation
-Please visit our [docs](https://docs.kubemq.io/reference/go.html).
 
-## Examples
-Please visit our extensive [examples](https://github.com/kubemq-io/kubemq-go/tree/master/examples) folder
-Please find usage examples on the examples folders.
+## Examples - Cookbook Recipes
+Please visit our cookbook [repository](https://github.com/kubemq-io/go-sdk-cookbook)
+
 
 ## Support
 if you encounter any issues, please open an issue here,

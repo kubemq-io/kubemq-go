@@ -672,9 +672,7 @@ func (rt *restTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.
 	<-ready
 
 	defer func() {
-
 		doneCh <- true
-
 	}()
 	go func() {
 		for {
@@ -691,7 +689,6 @@ func (rt *restTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.
 				case <-newCtx.Done():
 					return
 				}
-
 			case err := <-wsErrCh:
 				errCh <- err
 				return
@@ -706,7 +703,6 @@ func (rt *restTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.
 		case req := <-reqCh:
 			data, _ := json.Marshal(req)
 			writeCh <- data
-
 		case err := <-wsErrCh:
 			errCh <- err
 			return
