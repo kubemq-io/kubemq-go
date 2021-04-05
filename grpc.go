@@ -289,6 +289,7 @@ func (g *gRPCTransport) subscribeToEvents(ctx context.Context, subRequest *pb.Su
 		case <-ctx.Done():
 			return
 		}
+
 	}
 }
 
