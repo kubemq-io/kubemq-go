@@ -719,3 +719,6 @@ func (rt *restTransport) Close() error {
 	}
 	return nil
 }
+func (rt *restTransport) GetGRPCRawClient() (pb.KubemqClient, error) {
+	return nil, fmt.Errorf("this function is not supported in rest transport")
+}

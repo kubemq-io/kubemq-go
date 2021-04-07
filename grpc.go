@@ -956,3 +956,6 @@ func (g *gRPCTransport) Close() error {
 	g.isClosed.Store(true)
 	return nil
 }
+func (g *gRPCTransport) GetGRPCRawClient() (pb.KubemqClient, error) {
+	return g.client, nil
+}
