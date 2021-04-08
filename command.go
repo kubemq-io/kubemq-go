@@ -68,6 +68,9 @@ func (c *Command) SetTags(tags map[string]string) *Command {
 
 // AddTag - add key value tags to command message
 func (c *Command) AddTag(key, value string) *Command {
+	if c.Tags == nil {
+		c.Tags = map[string]string{}
+	}
 	c.Tags[key] = value
 	return c
 }

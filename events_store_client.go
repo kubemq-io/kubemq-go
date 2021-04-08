@@ -8,7 +8,31 @@ import (
 type EventsStoreClient struct {
 	client *Client
 }
+type EventsStoreSubscription struct {
+	Channel          string
+	Group            string
+	ClientId         string
+	SubscriptionType SubscriptionOption
+}
 
+func (es *EventsStoreSubscription) Complete(opts *Options) *EventsStoreSubscription {
+	if es.ClientId == "" {
+		es.ClientId = opts.clientId
+	}
+	return es
+}
+func (es *EventsStoreSubscription) Validate() error {
+	if es.Channel == "" {
+		return fmt.Errorf("events store subscription must have a channel")
+	}
+	if es.ClientId == "" {
+		return fmt.Errorf("events store subscription must have a clientId")
+	}
+	if es.SubscriptionType == nil {
+		return fmt.Errorf("events store subscription must have a subscription type")
+	}
+	return nil
+}
 func NewEventsStoreClient(ctx context.Context, op ...Option) (*EventsStoreClient, error) {
 	client, err := NewClient(ctx, op...)
 	if err != nil {
@@ -20,6 +44,7 @@ func NewEventsStoreClient(ctx context.Context, op ...Option) (*EventsStoreClient
 }
 
 func (es *EventsStoreClient) Send(ctx context.Context, message *EventStore) (*EventStoreResult, error) {
+	message.transport = es.client.transport
 	return es.client.SetEventStore(message).Send(ctx)
 }
 
@@ -56,12 +81,15 @@ func (es *EventsStoreClient) Stream(ctx context.Context, onResult func(result *E
 	return sendFunc, nil
 }
 
-func (es *EventsStoreClient) Subscribe(ctx context.Context, channel, group string, onEvent func(msg *EventStoreReceive, err error), opt SubscriptionOption) error {
+func (es *EventsStoreClient) Subscribe(ctx context.Context, request *EventsStoreSubscription, onEvent func(msg *EventStoreReceive, err error)) error {
 	if onEvent == nil {
 		return fmt.Errorf("events store subscription callback function is required")
 	}
+	if err := request.Complete(es.client.opts).Validate(); err != nil {
+		return err
+	}
 	errCh := make(chan error, 1)
-	eventsCh, err := es.client.SubscribeToEventsStore(ctx, channel, group, errCh, opt)
+	eventsCh, err := es.client.SubscribeToEventsStoreWithRequest(ctx, request, errCh)
 	if err != nil {
 		return err
 	}

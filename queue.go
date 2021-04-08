@@ -3,6 +3,7 @@ package kubemq
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	pb "github.com/kubemq-io/protobuf/go"
@@ -75,6 +76,9 @@ func (qm *QueueMessage) SetTags(tags map[string]string) *QueueMessage {
 
 // AddTag - add key value tags to query message
 func (qm *QueueMessage) AddTag(key, value string) *QueueMessage {
+	if qm.Tags == nil {
+		qm.Tags = map[string]string{}
+	}
 	qm.Tags[key] = value
 	return qm
 }
@@ -220,6 +224,10 @@ type ReceiveQueueMessagesRequest struct {
 	trace               *Trace
 }
 
+func NewReceiveQueueMessagesRequest() *ReceiveQueueMessagesRequest {
+	return &ReceiveQueueMessagesRequest{}
+}
+
 // SetId - set receive queue message request id, otherwise new random uuid will be set
 func (req *ReceiveQueueMessagesRequest) SetId(id string) *ReceiveQueueMessagesRequest {
 	req.RequestID = id
@@ -268,6 +276,30 @@ func (req *ReceiveQueueMessagesRequest) Send(ctx context.Context) (*ReceiveQueue
 		return nil, ErrNoTransportDefined
 	}
 	return req.transport.ReceiveQueueMessages(ctx, req)
+}
+func (req *ReceiveQueueMessagesRequest) Complete(opts *Options) *ReceiveQueueMessagesRequest {
+	if req.ClientID == "" {
+		req.ClientID = opts.clientId
+	}
+	return req
+}
+func (req *ReceiveQueueMessagesRequest) Validate() error {
+	if req.Channel == "" {
+		return fmt.Errorf("request must have a channel")
+	}
+	if req.ClientID == "" {
+		return fmt.Errorf("request must have a clientId")
+	}
+
+	if req.WaitTimeSeconds <= 0 {
+		return fmt.Errorf("request must have a wait time seconds >0")
+	}
+
+	if req.MaxNumberOfMessages <= 0 {
+		return fmt.Errorf("request must have a max number of messages >0")
+	}
+
+	return nil
 }
 
 type ReceiveQueueMessagesResponse struct {
@@ -325,6 +357,26 @@ func (req *AckAllQueueMessagesRequest) Send(ctx context.Context) (*AckAllQueueMe
 		return nil, ErrNoTransportDefined
 	}
 	return req.transport.AckAllQueueMessages(ctx, req)
+}
+func (req *AckAllQueueMessagesRequest) Complete(opts *Options) *AckAllQueueMessagesRequest {
+	if req.ClientID == "" {
+		req.ClientID = opts.clientId
+	}
+	return req
+}
+func (req *AckAllQueueMessagesRequest) Validate() error {
+	if req.Channel == "" {
+		return fmt.Errorf("ack all must have a channel")
+	}
+	if req.ClientID == "" {
+		return fmt.Errorf("ack all must have a clientId")
+	}
+
+	if req.WaitTimeSeconds <= 0 {
+		return fmt.Errorf("queues subscription must have a wait time seconds >0")
+	}
+
+	return nil
 }
 
 type AckAllQueueMessagesResponse struct {

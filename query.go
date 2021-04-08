@@ -64,6 +64,9 @@ func (q *Query) SetTags(tags map[string]string) *Query {
 
 // AddTag - add key value tags to query message
 func (q *Query) AddTag(key, value string) *Query {
+	if q.Tags == nil {
+		q.Tags = map[string]string{}
+	}
 	q.Tags[key] = value
 	return q
 }

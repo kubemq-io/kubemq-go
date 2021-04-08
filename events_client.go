@@ -13,12 +13,26 @@ type EventsClient struct {
 }
 
 type EventsSubscription struct {
-	Channel string
-	Group   string
-	EventsMessageHandler
-	EventsErrorsHandler
+	Channel  string
+	Group    string
+	ClientId string
 }
 
+func (es *EventsSubscription) Complete(opts *Options) *EventsSubscription {
+	if es.ClientId == "" {
+		es.ClientId = opts.clientId
+	}
+	return es
+}
+func (es *EventsSubscription) Validate() error {
+	if es.Channel == "" {
+		return fmt.Errorf("events subscription must have a channel")
+	}
+	if es.ClientId == "" {
+		return fmt.Errorf("events subscription must have a clientId")
+	}
+	return nil
+}
 func NewEventsClient(ctx context.Context, op ...Option) (*EventsClient, error) {
 	client, err := NewClient(ctx, op...)
 	if err != nil {
@@ -30,6 +44,7 @@ func NewEventsClient(ctx context.Context, op ...Option) (*EventsClient, error) {
 }
 
 func (e *EventsClient) Send(ctx context.Context, message *Event) error {
+	message.transport = e.client.transport
 	return e.client.SetEvent(message).Send(ctx)
 }
 
@@ -62,12 +77,15 @@ func (e *EventsClient) Stream(ctx context.Context, onError func(err error)) (fun
 	return sendFunc, nil
 }
 
-func (e *EventsClient) Subscribe(ctx context.Context, channel, group string, onEvent func(msg *Event, err error)) error {
+func (e *EventsClient) Subscribe(ctx context.Context, request *EventsSubscription, onEvent func(msg *Event, err error)) error {
 	if onEvent == nil {
 		return fmt.Errorf("events subscription callback function is required")
 	}
+	if err := request.Complete(e.client.opts).Validate(); err != nil {
+		return err
+	}
 	errCh := make(chan error, 1)
-	eventsCh, err := e.client.SubscribeToEvents(ctx, channel, group, errCh)
+	eventsCh, err := e.client.SubscribeToEventsWithRequest(ctx, request, errCh)
 	if err != nil {
 		return err
 	}

@@ -206,13 +206,13 @@ func (g *gRPCTransport) StreamEvents(ctx context.Context, eventsCh chan *Event, 
 	}
 
 }
-func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, channel, group string, errCh chan error) (<-chan *Event, error) {
+func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, request *EventsSubscription, errCh chan error) (<-chan *Event, error) {
 	eventsCh := make(chan *Event, g.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
 		SubscribeTypeData: pb.Events,
-		ClientID:          g.opts.clientId,
-		Channel:           channel,
-		Group:             group,
+		ClientID:          request.ClientId,
+		Channel:           request.Channel,
+		Group:             request.Group,
 	}
 
 	go func() {
@@ -386,15 +386,15 @@ func (g *gRPCTransport) StreamEventsStore(ctx context.Context, eventsCh chan *Ev
 
 }
 
-func (g *gRPCTransport) SubscribeToEventsStore(ctx context.Context, channel, group string, errCh chan error, opt SubscriptionOption) (<-chan *EventStoreReceive, error) {
+func (g *gRPCTransport) SubscribeToEventsStore(ctx context.Context, request *EventsStoreSubscription, errCh chan error) (<-chan *EventStoreReceive, error) {
 	eventsReceiveCh := make(chan *EventStoreReceive, g.opts.receiveBufferSize)
 	subOption := subscriptionOption{}
-	opt.apply(&subOption)
+	request.SubscriptionType.apply(&subOption)
 	subRequest := &pb.Subscribe{
 		SubscribeTypeData:    pb.EventsStore,
-		ClientID:             g.opts.clientId,
-		Channel:              channel,
-		Group:                group,
+		ClientID:             request.ClientId,
+		Channel:              request.Channel,
+		Group:                request.Group,
 		EventsStoreTypeData:  subOption.kind,
 		EventsStoreTypeValue: subOption.value,
 	}
@@ -521,13 +521,13 @@ func (g *gRPCTransport) SendCommand(ctx context.Context, command *Command) (*Com
 	return commandResponse, nil
 }
 
-func (g *gRPCTransport) SubscribeToCommands(ctx context.Context, channel, group string, errCh chan error) (<-chan *CommandReceive, error) {
+func (g *gRPCTransport) SubscribeToCommands(ctx context.Context, request *CommandsSubscription, errCh chan error) (<-chan *CommandReceive, error) {
 	commandsCh := make(chan *CommandReceive, g.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
 		SubscribeTypeData: pb.Commands,
-		ClientID:          g.opts.clientId,
-		Channel:           channel,
-		Group:             group,
+		ClientID:          request.ClientId,
+		Channel:           request.Channel,
+		Group:             request.Group,
 	}
 	go func() {
 		retries := atomic.NewUint32(0)
@@ -652,13 +652,13 @@ func (g *gRPCTransport) SendQuery(ctx context.Context, query *Query) (*QueryResp
 	return queryResponse, nil
 }
 
-func (g *gRPCTransport) SubscribeToQueries(ctx context.Context, channel, group string, errCh chan error) (<-chan *QueryReceive, error) {
+func (g *gRPCTransport) SubscribeToQueries(ctx context.Context, request *QueriesSubscription, errCh chan error) (<-chan *QueryReceive, error) {
 	queriesCh := make(chan *QueryReceive, g.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
 		SubscribeTypeData: pb.Queries,
-		ClientID:          g.opts.clientId,
-		Channel:           channel,
-		Group:             group,
+		ClientID:          request.ClientId,
+		Channel:           request.Channel,
+		Group:             request.Group,
 	}
 	go func() {
 

@@ -238,9 +238,9 @@ func (rt *restTransport) StreamEvents(ctx context.Context, eventsCh chan *Event,
 	}
 }
 
-func (rt *restTransport) SubscribeToEvents(ctx context.Context, channel, group string, errCh chan error) (<-chan *Event, error) {
+func (rt *restTransport) SubscribeToEvents(ctx context.Context, request *EventsSubscription, errCh chan error) (<-chan *Event, error) {
 	eventsCh := make(chan *Event, rt.opts.receiveBufferSize)
-	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s", rt.wsAddress, rt.id, channel, group, "events")
+	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s", rt.wsAddress, request.ClientId, request.Channel, request.Group, "events")
 	rxChan := make(chan string)
 	ready := make(chan struct{}, 1)
 	wsErrCh := make(chan error, 1)
@@ -352,11 +352,11 @@ func (rt *restTransport) StreamEventsStore(ctx context.Context, eventsCh chan *E
 	}
 }
 
-func (rt *restTransport) SubscribeToEventsStore(ctx context.Context, channel, group string, errCh chan error, opt SubscriptionOption) (<-chan *EventStoreReceive, error) {
+func (rt *restTransport) SubscribeToEventsStore(ctx context.Context, request *EventsStoreSubscription, errCh chan error) (<-chan *EventStoreReceive, error) {
 	eventsCh := make(chan *EventStoreReceive, rt.opts.receiveBufferSize)
 	subOption := subscriptionOption{}
-	opt.apply(&subOption)
-	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s&events_store_type_data=%d&events_store_type_value=%d", rt.wsAddress, rt.id, channel, group, "events_store", subOption.kind, subOption.value)
+	request.SubscriptionType.apply(&subOption)
+	uri := fmt.Sprintf("%s/subscribe/events?&client_id=%s&channel=%s&group=%s&subscribe_type=%s&events_store_type_data=%d&events_store_type_value=%d", rt.wsAddress, request.ClientId, request.Channel, request.Group, "events_store", subOption.kind, subOption.value)
 	rxChan := make(chan string)
 	ready := make(chan struct{}, 1)
 	wsErrCh := make(chan error, 1)
@@ -427,9 +427,9 @@ func (rt *restTransport) SendCommand(ctx context.Context, command *Command) (*Co
 	return cr, nil
 }
 
-func (rt *restTransport) SubscribeToCommands(ctx context.Context, channel, group string, errCh chan error) (<-chan *CommandReceive, error) {
+func (rt *restTransport) SubscribeToCommands(ctx context.Context, request *CommandsSubscription, errCh chan error) (<-chan *CommandReceive, error) {
 	commandCh := make(chan *CommandReceive, rt.opts.receiveBufferSize)
-	uri := fmt.Sprintf("%s/subscribe/requests?&client_id=%s&channel=%s&group=%s&subscribe_type=%s", rt.wsAddress, rt.id, channel, group, "commands")
+	uri := fmt.Sprintf("%s/subscribe/requests?&client_id=%s&channel=%s&group=%s&subscribe_type=%s", rt.wsAddress, request.ClientId, request.Channel, request.Group, "commands")
 	rxChan := make(chan string)
 	ready := make(chan struct{}, 1)
 	wsErrCh := make(chan error, 1)
@@ -498,9 +498,9 @@ func (rt *restTransport) SendQuery(ctx context.Context, query *Query) (*QueryRes
 	return qr, nil
 }
 
-func (rt *restTransport) SubscribeToQueries(ctx context.Context, channel, group string, errCh chan error) (<-chan *QueryReceive, error) {
+func (rt *restTransport) SubscribeToQueries(ctx context.Context, request *QueriesSubscription, errCh chan error) (<-chan *QueryReceive, error) {
 	queryCh := make(chan *QueryReceive, rt.opts.receiveBufferSize)
-	uri := fmt.Sprintf("%s/subscribe/requests?&client_id=%s&channel=%s&group=%s&subscribe_type=%s", rt.wsAddress, rt.id, channel, group, "queries")
+	uri := fmt.Sprintf("%s/subscribe/requests?&client_id=%s&channel=%s&group=%s&subscribe_type=%s", rt.wsAddress, request.ClientId, request.Channel, request.Group, "queries")
 	rxChan := make(chan string)
 	ready := make(chan struct{}, 1)
 	wsErrCh := make(chan error, 1)
