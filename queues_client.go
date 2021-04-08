@@ -47,6 +47,30 @@ func (req *QueueTransactionMessageRequest) SetVisibilitySeconds(visibility int) 
 	req.VisibilitySeconds = int32(visibility)
 	return req
 }
+func (req *QueueTransactionMessageRequest) Complete(opts *Options) *QueueTransactionMessageRequest {
+	if req.ClientID == "" {
+		req.ClientID = opts.clientId
+	}
+	return req
+}
+func (req *QueueTransactionMessageRequest) Validate() error {
+	if req.Channel == "" {
+		return fmt.Errorf("request must have a channel")
+	}
+	if req.ClientID == "" {
+		return fmt.Errorf("request must have a clientId")
+	}
+
+	if req.WaitTimeSeconds <= 0 {
+		return fmt.Errorf("request must have a wait time seconds >0")
+	}
+
+	if req.VisibilitySeconds <= 0 {
+		return fmt.Errorf("request must have a visibility seconds >0")
+	}
+
+	return nil
+}
 
 type QueuesClient struct {
 	client *Client
@@ -63,6 +87,7 @@ func NewQueuesClient(ctx context.Context, op ...Option) (*QueuesClient, error) {
 }
 
 func (q *QueuesClient) Send(ctx context.Context, message *QueueMessage) (*SendQueueMessageResult, error) {
+	message.transport = q.client.transport
 	return q.client.SetQueueMessage(message).Send(ctx)
 }
 
@@ -75,20 +100,106 @@ func (q *QueuesClient) Batch(ctx context.Context, messages []*QueueMessage) ([]*
 }
 
 func (q *QueuesClient) Pull(ctx context.Context, request *ReceiveQueueMessagesRequest) (*ReceiveQueueMessagesResponse, error) {
+	request.transport = q.client.transport
 	request.SetIsPeak(false)
+	if err := request.Complete(q.client.opts).Validate(); err != nil {
+		return nil, err
+	}
 	return request.Send(ctx)
 }
+
+func (q *QueuesClient) Subscribe(ctx context.Context, request *ReceiveQueueMessagesRequest, onReceive func(response *ReceiveQueueMessagesResponse, err error)) (chan struct{}, error) {
+	request.transport = q.client.transport
+	if onReceive == nil {
+		return nil, fmt.Errorf("queue subscription callback function is required")
+	}
+	if err := request.Complete(q.client.opts).Validate(); err != nil {
+		return nil, err
+	}
+	done := make(chan struct{}, 1)
+	if request.ClientID == "" {
+		request.ClientID = q.client.opts.clientId
+	}
+	request.transport = q.client.transport
+	request.SetIsPeak(false)
+	go func() {
+		for {
+			resp, err := request.Send(ctx)
+			if err != nil {
+				onReceive(nil, err)
+			} else {
+				if resp.IsError {
+					onReceive(nil, fmt.Errorf(resp.Error))
+				} else {
+					if len(resp.Messages) > 0 {
+						onReceive(resp, nil)
+					}
+				}
+			}
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			default:
+
+			}
+		}
+	}()
+	return done, nil
+}
+
 func (q *QueuesClient) Peek(ctx context.Context, request *ReceiveQueueMessagesRequest) (*ReceiveQueueMessagesResponse, error) {
+	request.transport = q.client.transport
 	request.SetIsPeak(true)
+	if err := request.Complete(q.client.opts).Validate(); err != nil {
+		return nil, err
+	}
 	return request.Send(ctx)
 }
 func (q *QueuesClient) AckAll(ctx context.Context, request *AckAllQueueMessagesRequest) (*AckAllQueueMessagesResponse, error) {
+	request.transport = q.client.transport
+	if err := request.Complete(q.client.opts).Validate(); err != nil {
+		return nil, err
+	}
 	return request.Send(ctx)
+}
+
+func (q *QueuesClient) TransactionStream(ctx context.Context, request *QueueTransactionMessageRequest, onReceive func(response *QueueTransactionMessageResponse, err error)) (chan struct{}, error) {
+	if onReceive == nil {
+		return nil, fmt.Errorf("queue transaction stream callback function is required")
+	}
+	if err := request.Complete(q.client.opts).Validate(); err != nil {
+		return nil, err
+	}
+	done := make(chan struct{}, 1)
+	go func() {
+		for {
+			resp, err := q.Transaction(ctx, request)
+			if err != nil {
+				onReceive(nil, err)
+			} else {
+				onReceive(resp, nil)
+			}
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			default:
+
+			}
+		}
+	}()
+	return done, nil
 }
 
 func (q *QueuesClient) Transaction(ctx context.Context, request *QueueTransactionMessageRequest) (*QueueTransactionMessageResponse, error) {
 	grpcClient, err := q.client.transport.GetGRPCRawClient()
 	if err != nil {
+		return nil, err
+	}
+	if err := request.Complete(q.client.opts).Validate(); err != nil {
 		return nil, err
 	}
 	stream, err := grpcClient.StreamQueueMessage(ctx)
@@ -192,7 +303,7 @@ func (qt *QueueTransactionMessageResponse) Reject() error {
 	return qt.stream.CloseSend()
 }
 
-func (qt *QueueTransactionMessageResponse) ExtendVisibility(value int) error {
+func (qt *QueueTransactionMessageResponse) ExtendVisibilitySeconds(value int) error {
 	err := qt.transact(&pb.StreamQueueMessagesRequest{
 		RequestID:             qt.Message.MessageID,
 		ClientID:              qt.Message.ClientID,

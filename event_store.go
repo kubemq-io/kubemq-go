@@ -62,6 +62,9 @@ func (es *EventStore) SetTags(tags map[string]string) *EventStore {
 
 // AddTag - add key value tags to event store message
 func (es *EventStore) AddTag(key, value string) *EventStore {
+	if es.Tags == nil {
+		es.Tags = map[string]string{}
+	}
 	es.Tags[key] = value
 	return es
 }
