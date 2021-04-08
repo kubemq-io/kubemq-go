@@ -180,22 +180,59 @@ func (c *Client) R() *Response {
 
 // SubscribeToEvents - subscribe to events by channel and group. return channel of events or en error
 func (c *Client) SubscribeToEvents(ctx context.Context, channel, group string, errCh chan error) (<-chan *Event, error) {
-	return c.transport.SubscribeToEvents(ctx, channel, group, errCh)
+	return c.transport.SubscribeToEvents(ctx, &EventsSubscription{
+		Channel:  channel,
+		Group:    group,
+		ClientId: c.opts.clientId,
+	}, errCh)
+}
+
+// SubscribeToEvents - subscribe to events by channel and group. return channel of events or en error
+func (c *Client) SubscribeToEventsWithRequest(ctx context.Context, request *EventsSubscription, errCh chan error) (<-chan *Event, error) {
+	return c.transport.SubscribeToEvents(ctx, request, errCh)
 }
 
 // SubscribeToEventsStore - subscribe to events store by channel and group with subscription option. return channel of events or en error
 func (c *Client) SubscribeToEventsStore(ctx context.Context, channel, group string, errCh chan error, opt SubscriptionOption) (<-chan *EventStoreReceive, error) {
-	return c.transport.SubscribeToEventsStore(ctx, channel, group, errCh, opt)
+	return c.transport.SubscribeToEventsStore(ctx, &EventsStoreSubscription{
+		Channel:          channel,
+		Group:            group,
+		ClientId:         c.opts.clientId,
+		SubscriptionType: opt,
+	}, errCh)
+}
+
+// SubscribeToEventsStoreWithRequest - subscribe to events store by channel and group with subscription option. return channel of events or en error
+func (c *Client) SubscribeToEventsStoreWithRequest(ctx context.Context, request *EventsStoreSubscription, errCh chan error) (<-chan *EventStoreReceive, error) {
+	return c.transport.SubscribeToEventsStore(ctx, request, errCh)
 }
 
 // SubscribeToCommands - subscribe to commands requests by channel and group. return channel of CommandReceived or en error
 func (c *Client) SubscribeToCommands(ctx context.Context, channel, group string, errCh chan error) (<-chan *CommandReceive, error) {
-	return c.transport.SubscribeToCommands(ctx, channel, group, errCh)
+	return c.transport.SubscribeToCommands(ctx, &CommandsSubscription{
+		Channel:  channel,
+		Group:    group,
+		ClientId: c.opts.clientId,
+	}, errCh)
+}
+
+// SubscribeToCommands - subscribe to commands requests by channel and group. return channel of CommandReceived or en error
+func (c *Client) SubscribeToCommandsWithRequest(ctx context.Context, request *CommandsSubscription, errCh chan error) (<-chan *CommandReceive, error) {
+	return c.transport.SubscribeToCommands(ctx, request, errCh)
+}
+
+// SubscribeToQueries - subscribe to queries requests by channel and group. return channel of QueryReceived or en error
+func (c *Client) SubscribeToQueriesWithRequest(ctx context.Context, request *QueriesSubscription, errCh chan error) (<-chan *QueryReceive, error) {
+	return c.transport.SubscribeToQueries(ctx, request, errCh)
 }
 
 // SubscribeToQueries - subscribe to queries requests by channel and group. return channel of QueryReceived or en error
 func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, errCh chan error) (<-chan *QueryReceive, error) {
-	return c.transport.SubscribeToQueries(ctx, channel, group, errCh)
+	return c.transport.SubscribeToQueries(ctx, &QueriesSubscription{
+		Channel:  channel,
+		Group:    group,
+		ClientId: c.opts.clientId,
+	}, errCh)
 }
 
 // NewQueueMessage - create an empty queue messages
