@@ -120,28 +120,28 @@ func newFuncSubscriptionOption(f func(*subscriptionOption)) *funcSubscriptionOpt
 // StartFromNewEvents - start event store subscription with only new events
 func StartFromNewEvents() SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.StartNewOnly
+		o.kind = pb.Subscribe_StartNewOnly
 	})
 }
 
 // StartFromFirstEvent - replay all the stored events from the first available sequence and continue stream new events from this point
 func StartFromFirstEvent() SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.StartFromFirst
+		o.kind = pb.Subscribe_StartFromFirst
 	})
 }
 
 // StartFromLastEvent - replay last event and continue stream new events from this point
 func StartFromLastEvent() SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.StartFromLast
+		o.kind = pb.Subscribe_StartFromLast
 	})
 }
 
 // StartFromSequence - replay events from specific event sequence number and continue stream new events from this point
 func StartFromSequence(sequence int) SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.StartAtSequence
+		o.kind = pb.Subscribe_StartAtSequence
 		o.value = int64(sequence)
 	})
 }
@@ -149,7 +149,7 @@ func StartFromSequence(sequence int) SubscriptionOption {
 // StartFromTime - replay events from specific time continue stream new events from this point
 func StartFromTime(since time.Time) SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.StartAtTime
+		o.kind = pb.Subscribe_StartAtTime
 		o.value = since.UnixNano()
 	})
 }
@@ -157,7 +157,7 @@ func StartFromTime(since time.Time) SubscriptionOption {
 // StartFromTimeDelta - replay events from specific current time - delta duration in seconds, continue stream new events from this point
 func StartFromTimeDelta(delta time.Duration) SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.StartAtTimeDelta
+		o.kind = pb.Subscribe_StartAtTimeDelta
 		o.value = int64(delta.Seconds())
 	})
 }
