@@ -474,7 +474,7 @@ func (req *StreamQueueMessage) Next(ctx context.Context, visibility, wait int32)
 	getRequest := &pb.StreamQueueMessagesRequest{
 		RequestID:             req.RequestID,
 		ClientID:              req.ClientID,
-		StreamRequestTypeData: pb.ReceiveMessage,
+		StreamRequestTypeData: pb.StreamRequestType_ReceiveMessage,
 		Channel:               req.Channel,
 		VisibilitySeconds:     visibility,
 		WaitTimeSeconds:       wait,
@@ -514,7 +514,7 @@ func (req *StreamQueueMessage) ack() error {
 	ackRequest := &pb.StreamQueueMessagesRequest{
 		RequestID:             req.RequestID,
 		ClientID:              req.ClientID,
-		StreamRequestTypeData: pb.AckMessage,
+		StreamRequestTypeData: pb.StreamRequestType_AckMessage,
 		Channel:               req.Channel,
 		VisibilitySeconds:     0,
 		WaitTimeSeconds:       0,
@@ -545,7 +545,7 @@ func (req *StreamQueueMessage) reject() error {
 	rejRequest := &pb.StreamQueueMessagesRequest{
 		RequestID:             req.RequestID,
 		ClientID:              req.ClientID,
-		StreamRequestTypeData: pb.RejectMessage,
+		StreamRequestTypeData: pb.StreamRequestType_RejectMessage,
 		Channel:               req.Channel,
 		VisibilitySeconds:     0,
 		WaitTimeSeconds:       0,
@@ -576,7 +576,7 @@ func (req *StreamQueueMessage) extendVisibility(value int32) error {
 	extRequest := &pb.StreamQueueMessagesRequest{
 		RequestID:             req.RequestID,
 		ClientID:              req.ClientID,
-		StreamRequestTypeData: pb.ModifyVisibility,
+		StreamRequestTypeData: pb.StreamRequestType_ModifyVisibility,
 		Channel:               req.Channel,
 		VisibilitySeconds:     value,
 		WaitTimeSeconds:       0,
@@ -607,7 +607,7 @@ func (req *StreamQueueMessage) resend(channel string) error {
 	extRequest := &pb.StreamQueueMessagesRequest{
 		RequestID:             req.RequestID,
 		ClientID:              req.ClientID,
-		StreamRequestTypeData: pb.ResendMessage,
+		StreamRequestTypeData: pb.StreamRequestType_ResendMessage,
 		Channel:               channel,
 		VisibilitySeconds:     0,
 		WaitTimeSeconds:       0,
@@ -637,7 +637,7 @@ func (req *StreamQueueMessage) ResendWithNewMessage(msg *QueueMessage) error {
 	extRequest := &pb.StreamQueueMessagesRequest{
 		RequestID:             req.RequestID,
 		ClientID:              req.ClientID,
-		StreamRequestTypeData: pb.SendModifiedMessage,
+		StreamRequestTypeData: pb.StreamRequestType_SendModifiedMessage,
 		Channel:               "",
 		VisibilitySeconds:     0,
 		WaitTimeSeconds:       0,

@@ -212,7 +212,7 @@ func (q *QueuesClient) Transaction(ctx context.Context, request *QueueTransactio
 	err = stream.Send(&pb.StreamQueueMessagesRequest{
 		RequestID:             request.RequestID,
 		ClientID:              request.ClientID,
-		StreamRequestTypeData: pb.ReceiveMessage,
+		StreamRequestTypeData: pb.StreamRequestType_ReceiveMessage,
 		Channel:               request.Channel,
 		VisibilitySeconds:     request.VisibilitySeconds,
 		WaitTimeSeconds:       request.WaitTimeSeconds,
@@ -280,7 +280,7 @@ func (qt *QueueTransactionMessageResponse) Ack() error {
 	err := qt.transact(&pb.StreamQueueMessagesRequest{
 		RequestID:             qt.Message.MessageID,
 		ClientID:              qt.Message.ClientID,
-		StreamRequestTypeData: pb.AckMessage,
+		StreamRequestTypeData: pb.StreamRequestType_AckMessage,
 		Channel:               qt.Message.Channel,
 		RefSequence:           qt.Message.Attributes.Sequence,
 	})
@@ -293,7 +293,7 @@ func (qt *QueueTransactionMessageResponse) Reject() error {
 	err := qt.transact(&pb.StreamQueueMessagesRequest{
 		RequestID:             qt.Message.MessageID,
 		ClientID:              qt.Message.ClientID,
-		StreamRequestTypeData: pb.RejectMessage,
+		StreamRequestTypeData: pb.StreamRequestType_RejectMessage,
 		Channel:               qt.Message.Channel,
 		RefSequence:           qt.Message.Attributes.Sequence,
 	})
@@ -307,7 +307,7 @@ func (qt *QueueTransactionMessageResponse) ExtendVisibilitySeconds(value int) er
 	err := qt.transact(&pb.StreamQueueMessagesRequest{
 		RequestID:             qt.Message.MessageID,
 		ClientID:              qt.Message.ClientID,
-		StreamRequestTypeData: pb.ModifyVisibility,
+		StreamRequestTypeData: pb.StreamRequestType_ModifyVisibility,
 		Channel:               qt.Message.Channel,
 		VisibilitySeconds:     int32(value),
 		RefSequence:           qt.Message.Attributes.Sequence,
@@ -322,7 +322,7 @@ func (qt *QueueTransactionMessageResponse) Resend(channel string) error {
 	err := qt.transact(&pb.StreamQueueMessagesRequest{
 		RequestID:             qt.Message.MessageID,
 		ClientID:              qt.Message.ClientID,
-		StreamRequestTypeData: pb.ResendMessage,
+		StreamRequestTypeData: pb.StreamRequestType_ResendMessage,
 		Channel:               channel,
 		RefSequence:           qt.Message.Attributes.Sequence,
 	})
@@ -335,7 +335,7 @@ func (qt *QueueTransactionMessageResponse) ResendNewMessage(msg *QueueMessage) e
 	err := qt.transact(&pb.StreamQueueMessagesRequest{
 		RequestID:             qt.Message.MessageID,
 		ClientID:              qt.Message.ClientID,
-		StreamRequestTypeData: pb.SendModifiedMessage,
+		StreamRequestTypeData: pb.StreamRequestType_SendModifiedMessage,
 		Channel:               qt.Message.Channel,
 		RefSequence:           qt.Message.Attributes.Sequence,
 		ModifiedMessage:       msg.QueueMessage,
