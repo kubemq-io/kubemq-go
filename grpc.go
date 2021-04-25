@@ -209,7 +209,7 @@ func (g *gRPCTransport) StreamEvents(ctx context.Context, eventsCh chan *Event, 
 func (g *gRPCTransport) SubscribeToEvents(ctx context.Context, request *EventsSubscription, errCh chan error) (<-chan *Event, error) {
 	eventsCh := make(chan *Event, g.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
-		SubscribeTypeData: pb.Events,
+		SubscribeTypeData: pb.Subscribe_Events,
 		ClientID:          request.ClientId,
 		Channel:           request.Channel,
 		Group:             request.Group,
@@ -391,7 +391,7 @@ func (g *gRPCTransport) SubscribeToEventsStore(ctx context.Context, request *Eve
 	subOption := subscriptionOption{}
 	request.SubscriptionType.apply(&subOption)
 	subRequest := &pb.Subscribe{
-		SubscribeTypeData:    pb.EventsStore,
+		SubscribeTypeData:    pb.Subscribe_EventsStore,
 		ClientID:             request.ClientId,
 		Channel:              request.Channel,
 		Group:                request.Group,
@@ -487,7 +487,7 @@ func (g *gRPCTransport) SendCommand(ctx context.Context, command *Command) (*Com
 	}
 	grpcRequest := &pb.Request{
 		RequestID:       command.Id,
-		RequestTypeData: pb.Command,
+		RequestTypeData: pb.Request_Command,
 		ClientID:        command.ClientId,
 		Channel:         command.Channel,
 		Metadata:        command.Metadata,
@@ -524,7 +524,7 @@ func (g *gRPCTransport) SendCommand(ctx context.Context, command *Command) (*Com
 func (g *gRPCTransport) SubscribeToCommands(ctx context.Context, request *CommandsSubscription, errCh chan error) (<-chan *CommandReceive, error) {
 	commandsCh := make(chan *CommandReceive, g.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
-		SubscribeTypeData: pb.Commands,
+		SubscribeTypeData: pb.Subscribe_Commands,
 		ClientID:          request.ClientId,
 		Channel:           request.Channel,
 		Group:             request.Group,
@@ -615,7 +615,7 @@ func (g *gRPCTransport) SendQuery(ctx context.Context, query *Query) (*QueryResp
 	}
 	grpcRequest := &pb.Request{
 		RequestID:       query.Id,
-		RequestTypeData: pb.Query,
+		RequestTypeData: pb.Request_Query,
 		ClientID:        query.ClientId,
 		Channel:         query.Channel,
 		Metadata:        query.Metadata,
@@ -655,7 +655,7 @@ func (g *gRPCTransport) SendQuery(ctx context.Context, query *Query) (*QueryResp
 func (g *gRPCTransport) SubscribeToQueries(ctx context.Context, request *QueriesSubscription, errCh chan error) (<-chan *QueryReceive, error) {
 	queriesCh := make(chan *QueryReceive, g.opts.receiveBufferSize)
 	subRequest := &pb.Subscribe{
-		SubscribeTypeData: pb.Queries,
+		SubscribeTypeData: pb.Subscribe_Queries,
 		ClientID:          request.ClientId,
 		Channel:           request.Channel,
 		Group:             request.Group,
@@ -947,7 +947,6 @@ func (g *gRPCTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.S
 	}
 
 }
-
 func (g *gRPCTransport) Close() error {
 	err := g.conn.Close()
 	if err != nil {
