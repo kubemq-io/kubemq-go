@@ -11,6 +11,18 @@ type PollRequest struct {
 	MaxItems    int    `json:"max_items"`
 	WaitTimeout int    `json:"wait_timeout"`
 	AutoAck     bool   `json:"auto_ack"`
+	OnErrorFunc func(err error)
+	OnComplete  func()
+}
+
+func (p *PollRequest) SetOnErrorFunc(onErrorFunc func(err error)) *PollRequest {
+	p.OnErrorFunc = onErrorFunc
+	return p
+}
+
+func (p *PollRequest) SetOnComplete(onComplete func()) *PollRequest {
+	p.OnComplete = onComplete
+	return p
 }
 
 func NewPollRequest() *PollRequest {

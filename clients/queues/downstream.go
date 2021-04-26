@@ -61,8 +61,7 @@ func (d *downstream) createPendingTransaction(request *pb.QueuesDownstreamReques
 		setRequestId(request.RequestID).
 		setRequestChanel(request.Channel).
 		setRequestClientId(request.ClientID).
-		setRequestCh(d.requestCh).
-		setOnDoneFunc(d.deleteActiveTransaction)
+		setRequestCh(d.requestCh)
 	d.pendingTransactions[request.RequestID] = handler
 	return handler
 }
@@ -151,32 +150,19 @@ func (d *downstream) clearPendingTransactions(err error) {
 	d.Lock()
 	d.Unlock()
 	for id, handler := range d.pendingTransactions {
-		handler.responseCh <- &pb.QueuesDownstreamResponse{
-			TransactionId:   handler.transactionId,
-			RefRequestId:    handler.requestId,
-			RequestTypeData: pb.QueuesDownstreamRequestType_CloseByServer,
-			Messages:        nil,
-			IsError:         true,
-			Error:           err.Error(),
-			Metadata:        nil,
-		}
-		delete(d.activeTransactions, id)
+		handler.sendError(err)
+		handler.sendComplete()
+		delete(d.pendingTransactions, id)
 	}
 }
 func (d *downstream) clearActiveTransactions(err error) {
 	d.Lock()
 	d.Unlock()
 	for id, handler := range d.activeTransactions {
-		handler.responseCh <- &pb.QueuesDownstreamResponse{
-			TransactionId:   handler.transactionId,
-			RefRequestId:    handler.requestId,
-			RequestTypeData: pb.QueuesDownstreamRequestType_CloseByServer,
-			Messages:        nil,
-			IsError:         true,
-			Error:           err.Error(),
-			Metadata:        nil,
-		}
+		handler.sendError(err)
+		handler.sendComplete()
 		delete(d.activeTransactions, id)
+
 	}
 }
 func (d *downstream) run() {
@@ -189,7 +175,6 @@ func (d *downstream) run() {
 		for {
 			select {
 			case resp := <-d.responseCh:
-				//log.Println("response receive", resp.RequestTypeData)
 				if resp.RequestTypeData == pb.QueuesDownstreamRequestType_Get {
 					handler, ok := d.movePendingToActiveTransaction(resp.RefRequestId, resp.TransactionId)
 					if ok {
@@ -198,11 +183,14 @@ func (d *downstream) run() {
 				} else {
 					handler, ok := d.getActiveTransaction(resp.TransactionId)
 					if ok {
-						switch resp.RequestTypeData {
-						case pb.QueuesDownstreamRequestType_CloseByServer:
-							handler.closeFromServer()
-						default:
-							handler.responseCh <- resp
+						if resp.TransactionComplete {
+							handler.sendComplete()
+							d.deleteActiveTransaction(resp.TransactionId)
+							continue
+						}
+						if resp.IsError {
+							handler.sendError(fmt.Errorf(resp.Error))
+							continue
 						}
 					}
 				}
@@ -222,10 +210,16 @@ func (d *downstream) run() {
 	}
 }
 
-func (d *downstream) poll(ctx context.Context, req *pb.QueuesDownstreamRequest) (*PollResponse, error) {
-	respHandler := d.createPendingTransaction(req)
+func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId string) (*PollResponse, error) {
+	pbReq, err := request.validateAndComplete(clientId)
+	if err != nil {
+		return nil, err
+	}
+	respHandler := d.createPendingTransaction(pbReq).
+		setOnErrorFunc(request.OnErrorFunc).
+		setOnCompleteFunc(request.OnComplete)
 	//log.Println("response handler created")
-	d.requestCh <- req
+	d.requestCh <- pbReq
 	//log.Println("request sent")
 	select {
 	case resp := <-respHandler.responseCh:
@@ -235,21 +229,24 @@ func (d *downstream) poll(ctx context.Context, req *pb.QueuesDownstreamRequest) 
 			return nil, fmt.Errorf(resp.Error)
 		}
 		pollResponse := newPollResponse(resp.Messages, respHandler)
-		if len(pollResponse.Messages) > 0 && !req.AutoAck {
+		if len(pollResponse.Messages) > 0 && !pbReq.AutoAck {
 			//log.Println("first response, we have messages and we are in manual ack")
-			respHandler.start(ctx, pollResponse.offsets())
+			respHandler.start(ctx)
 		} else {
 			//log.Println("no messages or in autoack")
+			respHandler.sendComplete()
 			d.deleteActiveTransaction(resp.TransactionId)
 		}
 		return pollResponse, nil
 	case <-d.downstreamCtx.Done():
-		//log.Println("poll downstream ctx canceled before get response")
-		d.deletePendingTransaction(req.RequestID)
+		respHandler.sendError(d.downstreamCtx.Err())
+		respHandler.sendComplete()
+		d.deletePendingTransaction(pbReq.RequestID)
 		return nil, d.downstreamCtx.Err()
 	case <-ctx.Done():
-		//log.Println("poll ctx canceled before get response")
-		d.deletePendingTransaction(req.RequestID)
+		respHandler.sendError(ctx.Err())
+		respHandler.sendComplete()
+		d.deletePendingTransaction(pbReq.RequestID)
 		return nil, ctx.Err()
 	}
 }

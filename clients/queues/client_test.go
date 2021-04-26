@@ -160,13 +160,15 @@ func TestQueuesClient_Poll_ManualAck_AckAll(t *testing.T) {
 		SetAutoAck(false).
 		SetMaxItems(messagesCount).
 		SetWaitTimeout(1000)
+
 	response, err := queueClient.Poll(ctx, pollRequest)
 	require.NoError(t, err)
 	require.EqualValues(t, messagesCount, len(response.Messages))
 	err = response.AckAll()
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
 	err = response.AckAll()
-	require.Error(t, err)
+
 	pollRequest2 := NewPollRequest().
 		SetChannel(testChannel).
 		SetAutoAck(true).
@@ -193,18 +195,22 @@ func TestQueuesClient_Poll_ManualAck_NAckAll(t *testing.T) {
 	for _, messageResult := range result.Results {
 		require.False(t, messageResult.IsError)
 	}
+
 	pollRequest := NewPollRequest().
 		SetChannel(testChannel).
 		SetAutoAck(false).
 		SetMaxItems(messagesCount).
 		SetWaitTimeout(1000)
+
 	response, err := queueClient.Poll(ctx, pollRequest)
 	require.NoError(t, err)
 	require.EqualValues(t, messagesCount, len(response.Messages))
+
 	err = response.NAckAll()
 	require.NoError(t, err)
-	err = response.NAckAll()
-	require.Error(t, err)
+	time.Sleep(100 * time.Millisecond)
+	require.Error(t, response.NAckAll())
+
 	pollRequest2 := NewPollRequest().
 		SetChannel(testChannel).
 		SetAutoAck(true).
@@ -236,14 +242,16 @@ func TestQueuesClient_Poll_ManualAck_ReQueueAll(t *testing.T) {
 		SetAutoAck(false).
 		SetMaxItems(messagesCount).
 		SetWaitTimeout(1000)
+
 	response, err := queueClient.Poll(ctx, pollRequest)
 	require.NoError(t, err)
 	require.EqualValues(t, messagesCount, len(response.Messages))
 	reQueueChannel := uuid.New()
 	err = response.ReQueueAll(reQueueChannel)
 	require.NoError(t, err)
-	err = response.ReQueueAll(reQueueChannel)
-	require.Error(t, err)
+	time.Sleep(100 * time.Millisecond)
+	require.Error(t, response.ReQueueAll(reQueueChannel))
+
 	pollRequest2 := NewPollRequest().
 		SetChannel(testChannel).
 		SetAutoAck(true).
