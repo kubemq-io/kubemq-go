@@ -52,11 +52,7 @@ func (q *QueuesClient) Send(ctx context.Context, messages ...*QueueMessage) (*Se
 }
 
 func (q *QueuesClient) Poll(ctx context.Context, request *PollRequest) (*PollResponse, error) {
-	req, err := request.validateAndComplete(q.client.GlobalClientId())
-	if err != nil {
-		return nil, err
-	}
-	pollReq, err := q.downstream.poll(ctx, req)
+	pollReq, err := q.downstream.poll(ctx, request,q.client.GlobalClientId())
 	return pollReq, err
 }
 
