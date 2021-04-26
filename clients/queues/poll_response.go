@@ -18,9 +18,3 @@ func newPollResponse(messages []*pb.QueueMessage, handler *responseHandler) *Pol
 	return p
 }
 
-func (p *PollResponse) offsets() (list []int64) {
-	for _, message := range p.Messages {
-		list = append(list, int64(message.Attributes.Sequence))
-	}
-	return
-}
