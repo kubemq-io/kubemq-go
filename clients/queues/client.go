@@ -3,20 +3,20 @@ package queues
 import (
 	"context"
 	"fmt"
-	"github.com/kubemq-io/kubemq-go/clients/base"
+	"github.com/kubemq-io/kubemq-go/clients"
 	"github.com/kubemq-io/kubemq-go/pkg/uuid"
 	pb "github.com/kubemq-io/protobuf/go"
 )
 
 type QueuesClient struct {
 	clientCtx  context.Context
-	client     *base.GrpcClient
+	client     *clients.GrpcClient
 	upstream   *upstream
 	downstream *downstream
 }
 
-func NewQueuesClient(ctx context.Context, op ...base.Option) (*QueuesClient, error) {
-	client, err := base.NewGrpcClient(ctx, op...)
+func NewQueuesClient(ctx context.Context, op ...clients.Option) (*QueuesClient, error) {
+	client, err := clients.NewGrpcClient(ctx, op...)
 	if err != nil {
 		return nil, err
 	}
