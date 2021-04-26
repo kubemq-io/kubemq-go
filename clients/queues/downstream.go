@@ -218,26 +218,37 @@ func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId st
 	respHandler := d.createPendingTransaction(pbReq).
 		setOnErrorFunc(request.OnErrorFunc).
 		setOnCompleteFunc(request.OnComplete)
-	//log.Println("response handler created")
-	d.requestCh <- pbReq
-	//log.Println("request sent")
+	select {
+	case d.requestCh <- pbReq:
+	case <-time.After(requestTimout):
+		return nil, fmt.Errorf("sending poll request timout error")
+	}
+
+	waitFirstResponse := request.WaitTimeout
+	if waitFirstResponse == 0 {
+		waitFirstResponse = 60000
+	} else {
+		waitFirstResponse = request.WaitTimeout + 1000
+	}
+	waitResponseCtx, waitResponseCancel := context.WithCancel(ctx)
+	defer waitResponseCancel()
+
 	select {
 	case resp := <-respHandler.responseCh:
-		//log.Println("first response accepted")
 		if resp.IsError {
-			//log.Println("first response error", resp.Error)
 			return nil, fmt.Errorf(resp.Error)
 		}
 		pollResponse := newPollResponse(resp.Messages, respHandler)
 		if len(pollResponse.Messages) > 0 && !pbReq.AutoAck {
-			//log.Println("first response, we have messages and we are in manual ack")
 			respHandler.start(ctx)
 		} else {
-			//log.Println("no messages or in autoack")
 			respHandler.sendComplete()
 			d.deleteActiveTransaction(resp.TransactionId)
 		}
 		return pollResponse, nil
+	case <-waitResponseCtx.Done():
+		d.deletePendingTransaction(pbReq.RequestID)
+		return nil, fmt.Errorf("timout waiting response for poll request")
 	case <-d.downstreamCtx.Done():
 		respHandler.sendError(d.downstreamCtx.Err())
 		respHandler.sendComplete()

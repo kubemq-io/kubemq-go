@@ -6,6 +6,7 @@ import (
 	pb "github.com/kubemq-io/protobuf/go"
 )
 
+// PollRequest - Request parameters for Poll function
 type PollRequest struct {
 	Channel     string `json:"Channel"`
 	MaxItems    int    `json:"max_items"`

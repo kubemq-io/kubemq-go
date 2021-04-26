@@ -52,24 +52,32 @@ func (q *QueuesClient) Send(ctx context.Context, messages ...*QueueMessage) (*Se
 }
 
 func (q *QueuesClient) Poll(ctx context.Context, request *PollRequest) (*PollResponse, error) {
-	pollReq, err := q.downstream.poll(ctx, request,q.client.GlobalClientId())
+	pollReq, err := q.downstream.poll(ctx, request, q.client.GlobalClientId())
 	return pollReq, err
 }
 
-func (q *QueuesClient) Subscribe(ctx context.Context, request *SubscribeRequest, cb func(response *SubscribeResponse, err error)) error {
-	if cb == nil {
-		return fmt.Errorf("subscribe callback cannot be nil")
+func (q *QueuesClient) AckAll(ctx context.Context, request *AckAllRequest) (*AckAllResponse, error) {
+	if err := request.validateAndComplete(q.client.GlobalClientId()); err != nil {
+		return nil, err
 	}
-	return nil
+	req := &pb.AckAllQueueMessagesRequest{
+		RequestID:       request.requestID,
+		ClientID:        request.ClientID,
+		Channel:         request.Channel,
+		WaitTimeSeconds: request.WaitTimeSeconds,
+	}
+	pbResp, err := q.client.AckAllQueueMessages(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	resp := &AckAllResponse{
+		RequestID:        pbResp.RequestID,
+		AffectedMessages: pbResp.AffectedMessages,
+		IsError:          pbResp.IsError,
+		Error:            pbResp.Error,
+	}
+	return resp, nil
 }
-
-//func (q *QueuesClient) AckAll(ctx context.Context, request *AckAllQueueMessagesRequest) (*AckAllQueueMessagesResponse, error) {
-//	request.transport = q.client.transport
-//	if err := request.Complete(q.client.opts).Validate(); err != nil {
-//		return nil, err
-//	}
-//	return request.Send(ctx)
-//}
 
 func (q *QueuesClient) Close() error {
 	q.upstream.close()
