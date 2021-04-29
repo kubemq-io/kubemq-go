@@ -15,6 +15,10 @@ func newPollResponse(messages []*pb.QueueMessage, handler *responseHandler) *Pol
 	for _, message := range messages {
 		p.Messages = append(p.Messages, newQueueMessageFrom(message).setResponseHandler(handler))
 	}
+	p.responseHandler.setIsEmptyResponse(len(p.Messages) == 0)
 	return p
 }
 
+func (p *PollResponse) HasMessages() bool {
+	return len(p.Messages) > 0
+}
