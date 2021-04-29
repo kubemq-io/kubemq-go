@@ -1,33 +1,33 @@
-package queues
+package queues_stream
 
 import (
 	"context"
 	"fmt"
-	"github.com/kubemq-io/kubemq-go/clients"
+
 	"github.com/kubemq-io/kubemq-go/pkg/uuid"
 	pb "github.com/kubemq-io/protobuf/go"
 )
 
-type QueuesClient struct {
+type QueuesStreamClient struct {
 	clientCtx  context.Context
-	client     *clients.GrpcClient
+	client     *GrpcClient
 	upstream   *upstream
 	downstream *downstream
 }
 
-func NewQueuesClient(ctx context.Context, op ...clients.Option) (*QueuesClient, error) {
-	client, err := clients.NewGrpcClient(ctx, op...)
+func NewQueuesStreamClient(ctx context.Context, op ...Option) (*QueuesStreamClient, error) {
+	client, err := NewGrpcClient(ctx, op...)
 	if err != nil {
 		return nil, err
 	}
-	return &QueuesClient{
+	return &QueuesStreamClient{
 		clientCtx:  ctx,
 		client:     client,
 		upstream:   newUpstream(ctx, client.KubemqClient),
 		downstream: newDownstream(ctx, client.KubemqClient),
 	}, nil
 }
-func (q *QueuesClient) Send(ctx context.Context, messages ...*QueueMessage) (*SendResult, error) {
+func (q *QueuesStreamClient) Send(ctx context.Context, messages ...*QueueMessage) (*SendResult, error) {
 	if len(messages) == 0 {
 		return nil, fmt.Errorf("no messages to send")
 	}
@@ -51,12 +51,12 @@ func (q *QueuesClient) Send(ctx context.Context, messages ...*QueueMessage) (*Se
 	}
 }
 
-func (q *QueuesClient) Poll(ctx context.Context, request *PollRequest) (*PollResponse, error) {
+func (q *QueuesStreamClient) Poll(ctx context.Context, request *PollRequest) (*PollResponse, error) {
 	pollReq, err := q.downstream.poll(ctx, request, q.client.GlobalClientId())
 	return pollReq, err
 }
 
-func (q *QueuesClient) AckAll(ctx context.Context, request *AckAllRequest) (*AckAllResponse, error) {
+func (q *QueuesStreamClient) AckAll(ctx context.Context, request *AckAllRequest) (*AckAllResponse, error) {
 	if err := request.validateAndComplete(q.client.GlobalClientId()); err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (q *QueuesClient) AckAll(ctx context.Context, request *AckAllRequest) (*Ack
 	return resp, nil
 }
 
-func (q *QueuesClient) Close() error {
+func (q *QueuesStreamClient) Close() error {
 	q.upstream.close()
 	q.downstream.close()
 	return q.client.Close()

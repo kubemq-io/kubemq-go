@@ -1,9 +1,9 @@
-package queues
+package queues_stream
 
 import (
 	"context"
 	"fmt"
-	"github.com/kubemq-io/kubemq-go/clients"
+
 	"github.com/kubemq-io/kubemq-go/pkg/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -27,8 +27,8 @@ func TestQueuesClient_Send(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	messages := createBatchMessages("queues.send", 10)
@@ -43,8 +43,8 @@ func TestQueuesClient_Send_WithInvalid_Data(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	messages := createBatchMessages("", 10)
@@ -59,8 +59,8 @@ func TestQueuesClient_Send_Concurrent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	counter := *atomic.NewInt32(0)
@@ -88,8 +88,8 @@ func TestQueuesClient_Poll_AutoAck(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -122,8 +122,8 @@ func TestQueuesClient_Poll_Long_AutoAck_ClientContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -142,8 +142,8 @@ func TestQueuesClient_Poll_ManualAck_AckAll(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -182,8 +182,8 @@ func TestQueuesClient_Poll_ManualAck_NAckAll(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -224,8 +224,8 @@ func TestQueuesClient_Poll_ManualAck_ReQueueAll(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -273,8 +273,8 @@ func TestQueuesClient_Poll_ManualAck_AckRange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -311,8 +311,8 @@ func TestQueuesClient_Poll_ManualAck_NAckRange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -349,8 +349,8 @@ func TestQueuesClient_Poll_ManualAck_ReQueueRange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -396,8 +396,8 @@ func TestQueuesClient_Poll_ManualAck_Close(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -432,8 +432,8 @@ func TestQueuesClient_Poll_ManualAck_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -467,8 +467,8 @@ func TestQueuesClient_Poll_ManualAck_ContextCancelled(t *testing.T) {
 	newCtx, newCancel := context.WithCancel(context.Background())
 	defer newCancel()
 	queueClient, err = NewQueuesClient(newCtx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	pollRequest3 := NewPollRequest().
@@ -484,8 +484,8 @@ func TestQueuesClient_Poll_ManualAck_CloseClient(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	testChannel := uuid.New()
@@ -509,8 +509,8 @@ func TestQueuesClient_Poll_ManualAck_CloseClient(t *testing.T) {
 	err = queueClient.Close()
 	require.NoError(t, err)
 	queueClient, err = NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	pollRequest3 := NewPollRequest().
@@ -526,8 +526,8 @@ func TestQueuesClient_Poll_InvalidRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	pollRequest := NewPollRequest().
@@ -544,8 +544,8 @@ func TestQueuesClient_Poll_InvalidRequestByServer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	queueClient, err := NewQueuesClient(ctx,
-		clients.WithAddress("localhost", 50000),
-		clients.WithClientId(uuid.New()),
+		WithAddress("localhost", 50000),
+		WithClientId(uuid.New()),
 	)
 	require.NoError(t, err)
 	pollRequest := NewPollRequest().
