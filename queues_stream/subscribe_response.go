@@ -1,4 +1,4 @@
-package queues
+package queues_stream
 
 type SubscribeResponse struct {
 	Messages []*QueueMessage
