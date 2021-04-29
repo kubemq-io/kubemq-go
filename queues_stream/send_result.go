@@ -1,4 +1,4 @@
-package queues
+package queues_stream
 
 import pb "github.com/kubemq-io/protobuf/go"
 

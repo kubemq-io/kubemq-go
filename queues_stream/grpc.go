@@ -1,4 +1,4 @@
-package clients
+package queues_stream
 
 import (
 	"context"
