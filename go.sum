@@ -145,6 +145,8 @@ github.com/kubemq-io/protobuf v1.1.0 h1:MaNkRULq/wlU9o9jwx6HORtz2RngpudmxShQ+86C
 github.com/kubemq-io/protobuf v1.1.0/go.mod h1:WdYSkchIYDxFu2qLBjHY9ma+6tglnERShgGk9MEGW/k=
 github.com/kubemq-io/protobuf v1.2.0 h1:8KOl70l5/hHwcpCU/Bul5GMDOzLFrKljfz5hwSnGcdw=
 github.com/kubemq-io/protobuf v1.2.0/go.mod h1:WdYSkchIYDxFu2qLBjHY9ma+6tglnERShgGk9MEGW/k=
+github.com/kubemq-io/protobuf v1.3.0 h1:R3WEjRPLLdZrAnFzILYAOad48U3yNW3ZW71fSAgruUk=
+github.com/kubemq-io/protobuf v1.3.0/go.mod h1:mzbGBI05R+GhFLD520xweEIvDM+m4nI7ruJDhgEncas=
 github.com/magiconair/properties v1.8.1 h1:ZC2Vc7/ZFkGmsVC9KvOjumD+G5lXy2RtTKyzRKO2BQ4=
 github.com/magiconair/properties v1.8.1/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/mattn/go-colorable v0.0.9/go.mod h1:9vuHe8Xs5qXnSaW/c/ABM9alt+Vo+STaOChaDxuIBZU=

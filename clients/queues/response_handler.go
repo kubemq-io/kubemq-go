@@ -21,8 +21,14 @@ type responseHandler struct {
 	requestChannel  string
 	transactionId   string
 	requestId       string
+	isEmptyResponse bool
 	onErrorFunc     func(err error)
 	onCompleteFunc  func()
+}
+
+func (r *responseHandler) setIsEmptyResponse(isEmptyResponse bool) *responseHandler {
+	r.isEmptyResponse = isEmptyResponse
+	return nil
 }
 
 func newResponseHandler() *responseHandler {
@@ -59,7 +65,6 @@ func (r *responseHandler) sendRequest(request *pb.QueuesDownstreamRequest) error
 	if !r.isActive.Load() {
 		return fmt.Errorf("transaction is not ready to accept requests")
 	}
-
 	select {
 	case r.requestCh <- request:
 		//log.Println("sending request", request.RequestTypeData, request.RequestID)
@@ -119,6 +124,9 @@ func (r *responseHandler) sendComplete() {
 	}
 }
 func (r *responseHandler) AckAll() error {
+	if r.isEmptyResponse {
+		return fmt.Errorf("no available messages to ack")
+	}
 	request := &pb.QueuesDownstreamRequest{
 		RequestID:        uuid.New(),
 		ClientID:         r.requestClientId,
@@ -138,7 +146,17 @@ func (r *responseHandler) AckAll() error {
 	return nil
 }
 func (r *responseHandler) AckOffsets(offsets ...int64) error {
-
+	if r.isEmptyResponse {
+		return fmt.Errorf("no available messages to ack")
+	}
+	if len(offsets) == 0 {
+		return fmt.Errorf("no available offsets messages to ack")
+	}
+	for i := 0; i < len(offsets); i++ {
+		if offsets[i] <= 0 {
+			return fmt.Errorf("invalid offset %d for ack, must be greater than 0", offsets[i])
+		}
+	}
 	request := &pb.QueuesDownstreamRequest{
 		RequestID:        uuid.New(),
 		ClientID:         r.requestClientId,
@@ -159,6 +177,9 @@ func (r *responseHandler) AckOffsets(offsets ...int64) error {
 }
 
 func (r *responseHandler) NAckAll() error {
+	if r.isEmptyResponse {
+		return fmt.Errorf("no available messages to nack")
+	}
 	request := &pb.QueuesDownstreamRequest{
 		RequestID:        uuid.New(),
 		ClientID:         r.requestClientId,
@@ -178,6 +199,17 @@ func (r *responseHandler) NAckAll() error {
 	return nil
 }
 func (r *responseHandler) NAckOffsets(offsets ...int64) error {
+	if r.isEmptyResponse {
+		return fmt.Errorf("no available messages to nack")
+	}
+	if len(offsets) == 0 {
+		return fmt.Errorf("no available offsets messages to nack")
+	}
+	for i := 0; i < len(offsets); i++ {
+		if offsets[i] <= 0 {
+			return fmt.Errorf("invalid offset %d for nack, must be greater than 0", offsets[i])
+		}
+	}
 	request := &pb.QueuesDownstreamRequest{
 		RequestID:        uuid.New(),
 		ClientID:         r.requestClientId,
@@ -197,6 +229,12 @@ func (r *responseHandler) NAckOffsets(offsets ...int64) error {
 	return nil
 }
 func (r *responseHandler) ReQueueAll(channel string) error {
+	if r.isEmptyResponse {
+		return fmt.Errorf("no available messages to requeue")
+	}
+	if channel == "" {
+		return fmt.Errorf("requeue channel cannot be empty")
+	}
 	request := &pb.QueuesDownstreamRequest{
 		RequestID:        uuid.New(),
 		ClientID:         r.requestClientId,
@@ -216,7 +254,20 @@ func (r *responseHandler) ReQueueAll(channel string) error {
 	return nil
 }
 func (r *responseHandler) ReQueueOffsets(channel string, offsets ...int64) error {
-
+	if r.isEmptyResponse {
+		return fmt.Errorf("no available messages to requeue")
+	}
+	if len(offsets) == 0 {
+		return fmt.Errorf("no available offsets messages to requeue")
+	}
+	for i := 0; i < len(offsets); i++ {
+		if offsets[i] <= 0 {
+			return fmt.Errorf("invalid offset %d for requeue, must be greater than 0", offsets[i])
+		}
+	}
+	if channel == "" {
+		return fmt.Errorf("requeue channel cannot be empty")
+	}
 	request := &pb.QueuesDownstreamRequest{
 		RequestID:        uuid.New(),
 		ClientID:         r.requestClientId,
