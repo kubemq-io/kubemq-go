@@ -3,6 +3,7 @@ package queues_stream
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/kubemq-io/kubemq-go/pkg/uuid"
 	pb "github.com/kubemq-io/protobuf/go"
@@ -80,6 +81,7 @@ func (q *QueuesStreamClient) AckAll(ctx context.Context, request *AckAllRequest)
 }
 
 func (q *QueuesStreamClient) Close() error {
+	time.Sleep(100 *time.Millisecond)
 	q.upstream.close()
 	q.downstream.close()
 	return q.client.Close()
