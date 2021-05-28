@@ -80,8 +80,19 @@ func (q *QueuesStreamClient) AckAll(ctx context.Context, request *AckAllRequest)
 	return resp, nil
 }
 
+func (q *QueuesStreamClient) QueuesInfo(ctx context.Context, filter string) (*QueuesInfo, error) {
+	resp, err := q.client.QueuesInfo(ctx, &pb.QueuesInfoRequest{
+		RequestID: uuid.New(),
+		QueueName: filter,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return fromQueuesInfoPb(resp.Info), nil
+}
+
 func (q *QueuesStreamClient) Close() error {
-	time.Sleep(100 *time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	q.upstream.close()
 	q.downstream.close()
 	return q.client.Close()
