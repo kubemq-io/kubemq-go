@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/kubemq-io/kubemq-go/pkg/uuid"
 	"github.com/nats-io/nuid"
 	"go.uber.org/atomic"
 	"io"
@@ -946,6 +947,19 @@ func (g *gRPCTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.S
 		}
 	}
 
+}
+func (g *gRPCTransport) QueuesInfo(ctx context.Context, filter string) (*QueuesInfo, error) {
+	if g.isClosed.Load() {
+		return nil, errConnectionClosed
+	}
+	resp, err := g.client.QueuesInfo(ctx, &pb.QueuesInfoRequest{
+		RequestID: uuid.New(),
+		QueueName: filter,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return fromQueuesInfoPb(resp.Info), nil
 }
 func (g *gRPCTransport) Close() error {
 	err := g.conn.Close()

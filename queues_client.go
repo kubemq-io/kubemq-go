@@ -234,6 +234,10 @@ func (q *QueuesClient) Transaction(ctx context.Context, request *QueueTransactio
 		Message: &QueueMessage{QueueMessage: res.Message},
 	}, nil
 }
+func (q *QueuesClient) QueuesInfo(ctx context.Context, filter string) (*QueuesInfo, error) {
+	return q.client.transport.QueuesInfo(ctx, filter)
+}
+
 func (q *QueuesClient) Close() error {
 	return q.client.Close()
 }

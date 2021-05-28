@@ -338,6 +338,11 @@ func (c *Client) NewStreamQueueMessage() *StreamQueueMessage {
 	return c.SQM()
 }
 
+// QueuesInfo - get queues detailed information
+func (c *Client) QueuesInfo(ctx context.Context, filter string) (*QueuesInfo, error) {
+	return c.transport.QueuesInfo(ctx, filter)
+}
+
 // SQM - create an empty stream receive queue message object
 func (c *Client) SQM() *StreamQueueMessage {
 
