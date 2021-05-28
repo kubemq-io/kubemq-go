@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kubemq-io/kubemq-go/pkg/uuid"
 	"net/http"
 
 	pb "github.com/kubemq-io/protobuf/go"
@@ -713,6 +714,23 @@ func (rt *restTransport) StreamQueueMessage(ctx context.Context, reqCh chan *pb.
 
 }
 
+func (rt *restTransport) QueuesInfo(ctx context.Context, filter string) (*QueuesInfo, error) {
+	resp := &restResponse{}
+	uri := fmt.Sprintf("%s/queue/info", rt.restAddress)
+	req := &pb.QueuesInfoRequest{
+		RequestID: uuid.New(),
+		QueueName: filter,
+	}
+	_, err := rt.newRequest().SetBody(req).SetResult(resp).SetError(resp).Get(uri)
+	if err != nil {
+		return nil, err
+	}
+	result := &pb.QueuesInfoResponse{}
+	if err := resp.unmarshal(result); err != nil {
+		return nil, err
+	}
+	return fromQueuesInfoPb(result.Info), nil
+}
 func (rt *restTransport) Close() error {
 	if rt.wsConn != nil {
 		return rt.wsConn.Close()

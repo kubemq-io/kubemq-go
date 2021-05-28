@@ -3,7 +3,7 @@ module github.com/kubemq-io/kubemq-go
 require (
 	github.com/go-resty/resty/v2 v2.0.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/kubemq-io/protobuf v1.3.0
+	github.com/kubemq-io/protobuf v1.3.1
 	github.com/nats-io/nuid v1.0.1
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.7.1
