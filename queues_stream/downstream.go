@@ -268,7 +268,7 @@ func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId st
 		return nil, fmt.Errorf("client connection error, %s", connectionErr.Error())
 	case <-waitResponseCtx.Done():
 		d.deletePendingTransaction(pbReq.RequestID)
-		return nil, fmt.Errorf("timout waiting response for poll request")
+		return nil, fmt.Errorf("timout waiting response for poll messages request")
 	case <-d.downstreamCtx.Done():
 		respHandler.sendError(d.downstreamCtx.Err())
 		respHandler.sendComplete()
