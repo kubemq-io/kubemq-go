@@ -12,23 +12,24 @@ type Option interface {
 }
 
 type Options struct {
-	host                 string
-	port                 int
-	isSecured            bool
-	certFile             string
-	certData             string
-	serverOverrideDomain string
-	authToken            string
-	clientId             string
-	receiveBufferSize    int
-	defaultChannel       string
-	defaultCacheTTL      time.Duration
-	restUri              string
-	webSocketUri         string
-	autoReconnect        bool
-	reconnectInterval    time.Duration
-	maxReconnect         int
-	checkConnection      bool
+	host                       string
+	port                       int
+	isSecured                  bool
+	certFile                   string
+	certData                   string
+	serverOverrideDomain       string
+	authToken                  string
+	clientId                   string
+	receiveBufferSize          int
+	defaultChannel             string
+	defaultCacheTTL            time.Duration
+	restUri                    string
+	webSocketUri               string
+	autoReconnect              bool
+	reconnectInterval          time.Duration
+	maxReconnect               int
+	checkConnection            bool
+	connectionNotificationFunc func(msg string)
 }
 
 type funcOptions struct {
@@ -54,7 +55,14 @@ func WithAddress(host string, port int) Option {
 	})
 }
 
-// WithCredentials - set secured TLS credentials from the input certificate file for client.
+// WithConnectionNotificationFunc - set on connection activity messages
+func WithConnectionNotificationFunc(fn func(msg string)) Option {
+	return newFuncOption(func(o *Options) {
+		o.connectionNotificationFunc = fn
+	})
+}
+
+// WithCredentials - set secured TLS credentials from the input certificate file for grpcClient.
 // serverNameOverride is for testing only. If set to a non empty string,
 // it will override the virtual host name of authority (e.g. :authority header field) in requests.
 func WithCredentials(certFile, serverOverrideDomain string) Option {
@@ -65,7 +73,7 @@ func WithCredentials(certFile, serverOverrideDomain string) Option {
 	})
 }
 
-// WithCertificate - set secured TLS credentials from the input certificate data for client.
+// WithCertificate - set secured TLS credentials from the input certificate data for grpcClient.
 // serverNameOverride is for testing only. If set to a non empty string,
 // it will override the virtual host name of authority (e.g. :authority header field) in requests.
 func WithCertificate(certData, serverOverrideDomain string) Option {
@@ -83,7 +91,7 @@ func WithAuthToken(token string) Option {
 	})
 }
 
-// WithClientId - set client id to be used in all functions call with this client - mandatory
+// WithClientId - set grpcClient id to be used in all functions call with this grpcClient - mandatory
 func WithClientId(id string) Option {
 	return newFuncOption(func(o *Options) {
 		o.clientId = id
@@ -132,7 +140,7 @@ func WithMaxReconnects(value int) Option {
 	})
 }
 
-// WithCheckConnection - set server connectivity on client create
+// WithCheckConnection - set server connectivity on grpcClient create
 func WithCheckConnection(value bool) Option {
 	return newFuncOption(func(o *Options) {
 		o.checkConnection = value

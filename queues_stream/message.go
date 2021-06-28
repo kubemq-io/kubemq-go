@@ -49,7 +49,7 @@ func (qm *QueueMessage) SetId(id string) *QueueMessage {
 
 }
 
-// SetClientId - set queue message ClientId - mandatory if default client was not set
+// SetClientId - set queue message ClientId - mandatory if default grpcClient was not set
 func (qm *QueueMessage) SetClientId(clientId string) *QueueMessage {
 	qm.ClientID = clientId
 	return qm
