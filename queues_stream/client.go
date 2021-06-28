@@ -30,7 +30,7 @@ func NewQueuesStreamClient(ctx context.Context, op ...Option) (*QueuesStreamClie
 }
 func (q *QueuesStreamClient) Send(ctx context.Context, messages ...*QueueMessage) (*SendResult, error) {
 	if !q.upstream.isReady() {
-		return nil, fmt.Errorf("no available client connection to send messages")
+		return nil, fmt.Errorf("kubemq client connection lost, can't send messages ")
 	}
 	if len(messages) == 0 {
 		return nil, fmt.Errorf("no messages to send")
@@ -57,7 +57,7 @@ func (q *QueuesStreamClient) Send(ctx context.Context, messages ...*QueueMessage
 
 func (q *QueuesStreamClient) Poll(ctx context.Context, request *PollRequest) (*PollResponse, error) {
 	if !q.downstream.isReady() {
-		return nil, fmt.Errorf("no available client connection to poll")
+		return nil, fmt.Errorf("kubemq client connection lost, can't poll messages")
 	}
 	pollReq, err := q.downstream.poll(ctx, request, q.client.GlobalClientId())
 	return pollReq, err
