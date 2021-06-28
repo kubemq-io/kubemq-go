@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	pb "github.com/kubemq-io/protobuf/go"
+	"go.uber.org/atomic"
 	"io"
 	"sync"
 	"time"
@@ -21,23 +22,29 @@ type downstream struct {
 	doneCh              chan bool
 	client              pb.KubemqClient
 	isClosed            bool
+	connectionState     *atomic.Bool
 }
 
 func newDownstream(ctx context.Context, client pb.KubemqClient) *downstream {
 
-	u := &downstream{
+	d := &downstream{
 		Mutex:               sync.Mutex{},
-		activeTransactions:  map[string]*responseHandler{},
+		downstreamCtx:       nil,
+		downstreamCancel:    nil,
 		pendingTransactions: map[string]*responseHandler{},
-		errCh:               make(chan error, 10),
+		activeTransactions:  map[string]*responseHandler{},
 		requestCh:           make(chan *pb.QueuesDownstreamRequest, 10),
 		responseCh:          make(chan *pb.QueuesDownstreamResponse, 10),
+		errCh:               make(chan error, 10),
 		doneCh:              make(chan bool, 1),
 		client:              client,
+		isClosed:            false,
+		connectionState:     atomic.NewBool(false),
 	}
-	u.downstreamCtx, u.downstreamCancel = context.WithCancel(ctx)
-	go u.run()
-	return u
+	d.downstreamCtx, d.downstreamCancel = context.WithCancel(ctx)
+	go d.run()
+	time.Sleep(time.Second)
+	return d
 }
 
 func (d *downstream) close() {
@@ -101,12 +108,14 @@ func (d *downstream) deleteActiveTransaction(id string) {
 func (d *downstream) connectStream(ctx context.Context) {
 	defer func() {
 		d.doneCh <- true
+		d.connectionState.Store(false)
 	}()
 	stream, err := d.client.QueuesDownstream(ctx)
 	if err != nil {
 		d.errCh <- err
 		return
 	}
+	d.connectionState.Store(true)
 	go func() {
 		for {
 			res, err := stream.Recv()
@@ -150,6 +159,11 @@ func (d *downstream) clearPendingTransactions(err error) {
 	d.Lock()
 	d.Unlock()
 	for id, handler := range d.pendingTransactions {
+		select {
+		case handler.errCh <- err:
+		default:
+
+		}
 		handler.sendError(err)
 		handler.sendComplete()
 		delete(d.pendingTransactions, id)
@@ -159,10 +173,13 @@ func (d *downstream) clearActiveTransactions(err error) {
 	d.Lock()
 	d.Unlock()
 	for id, handler := range d.activeTransactions {
+		select {
+		case handler.errCh <- err:
+		default:
+		}
 		handler.sendError(err)
 		handler.sendComplete()
 		delete(d.activeTransactions, id)
-
 	}
 }
 func (d *downstream) run() {
@@ -209,7 +226,9 @@ func (d *downstream) run() {
 		time.Sleep(time.Second)
 	}
 }
-
+func (d *downstream) isReady() bool {
+	return d.connectionState.Load()
+}
 func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId string) (*PollResponse, error) {
 	pbReq, err := request.validateAndComplete(clientId)
 	if err != nil {
@@ -220,7 +239,7 @@ func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId st
 		setOnCompleteFunc(request.OnComplete)
 	select {
 	case d.requestCh <- pbReq:
-	case <-time.After(requestTimout):
+	case <-time.After(time.Second):
 		return nil, fmt.Errorf("sending poll request timout error")
 	}
 
@@ -230,9 +249,8 @@ func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId st
 	} else {
 		waitFirstResponse = request.WaitTimeout + 1000
 	}
-	waitResponseCtx, waitResponseCancel := context.WithCancel(ctx)
+	waitResponseCtx, waitResponseCancel := context.WithTimeout(ctx, time.Duration(waitFirstResponse)*time.Millisecond)
 	defer waitResponseCancel()
-
 	select {
 	case resp := <-respHandler.responseCh:
 		if resp.IsError {
@@ -246,6 +264,8 @@ func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId st
 			d.deleteActiveTransaction(resp.TransactionId)
 		}
 		return pollResponse, nil
+	case connectionErr := <-respHandler.errCh:
+		return nil, fmt.Errorf("client connection error, %s", connectionErr.Error())
 	case <-waitResponseCtx.Done():
 		d.deletePendingTransaction(pbReq.RequestID)
 		return nil, fmt.Errorf("timout waiting response for poll request")

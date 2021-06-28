@@ -76,7 +76,7 @@ type QueuesClient struct {
 	client *Client
 }
 
-func NewQueuesClient(ctx context.Context, op ...Option) (*QueuesClient, error) {
+func NewQueuesStreamClient(ctx context.Context, op ...Option) (*QueuesClient, error) {
 	client, err := NewClient(ctx, op...)
 	if err != nil {
 		return nil, err

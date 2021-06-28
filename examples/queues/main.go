@@ -76,7 +76,7 @@ func main() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sender, err := kubemq.NewQueuesClient(ctx,
+	sender, err := kubemq.NewQueuesStreamClient(ctx,
 		kubemq.WithAddress(cfg.Address, 50000),
 		kubemq.WithClientId("stream-queue-sender"),
 		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
@@ -115,7 +115,7 @@ func main() {
 				cnt := atomic.NewInt32(0)
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
-				receiver, err := kubemq.NewQueuesClient(ctx,
+				receiver, err := kubemq.NewQueuesStreamClient(ctx,
 					kubemq.WithAddress(cfg.Address, 50000),
 					kubemq.WithClientId(fmt.Sprintf("stream-queue-receiver-%d", index)),
 					kubemq.WithAutoReconnect(true),

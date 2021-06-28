@@ -3,6 +3,7 @@ package queues_stream
 import (
 	"context"
 	pb "github.com/kubemq-io/protobuf/go"
+	"go.uber.org/atomic"
 	"io"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ type upstream struct {
 	doneCh             chan bool
 	client             pb.KubemqClient
 	isClosed           bool
+	connectionState    *atomic.Bool
 }
 
 func newUpstream(ctx context.Context, client pb.KubemqClient) *upstream {
@@ -31,9 +33,11 @@ func newUpstream(ctx context.Context, client pb.KubemqClient) *upstream {
 		responseCh:         make(chan *pb.QueuesUpstreamResponse, 10),
 		doneCh:             make(chan bool, 1),
 		client:             client,
+		connectionState:    atomic.NewBool(false),
 	}
 	u.upstreamCtx, u.upstreamCancel = context.WithCancel(ctx)
 	go u.run()
+	time.Sleep(time.Second)
 	return u
 }
 
@@ -74,13 +78,14 @@ func (u *upstream) deleteTransaction(id string) {
 func (u *upstream) connectStream(ctx context.Context) {
 	defer func() {
 		u.doneCh <- true
+		u.connectionState.Store(false)
 	}()
 	stream, err := u.client.QueuesUpstream(ctx)
-
 	if err != nil {
 		u.errCh <- err
 		return
 	}
+	u.connectionState.Store(true)
 	go func() {
 		for {
 			res, err := stream.Recv()
@@ -161,7 +166,9 @@ func (u *upstream) run() {
 		time.Sleep(time.Second)
 	}
 }
-
+func (u *upstream) isReady() bool {
+	return u.connectionState.Load()
+}
 func (u *upstream) send(req *pb.QueuesUpstreamRequest) chan *pb.QueuesUpstreamResponse {
 	respCh := u.setTransaction(req.RequestID)
 	u.requestCh <- req
