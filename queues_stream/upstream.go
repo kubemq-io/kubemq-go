@@ -2,6 +2,7 @@ package queues_stream
 
 import (
 	"context"
+	"fmt"
 	pb "github.com/kubemq-io/protobuf/go"
 	"go.uber.org/atomic"
 	"io"
@@ -18,12 +19,13 @@ type upstream struct {
 	responseCh         chan *pb.QueuesUpstreamResponse
 	errCh              chan error
 	doneCh             chan bool
-	client             pb.KubemqClient
+	grpcClient         pb.KubemqClient
+	streamClient       *QueuesStreamClient
 	isClosed           bool
 	connectionState    *atomic.Bool
 }
 
-func newUpstream(ctx context.Context, client pb.KubemqClient) *upstream {
+func newUpstream(ctx context.Context, streamClient *QueuesStreamClient) *upstream {
 
 	u := &upstream{
 		Mutex:              sync.Mutex{},
@@ -32,7 +34,8 @@ func newUpstream(ctx context.Context, client pb.KubemqClient) *upstream {
 		requestCh:          make(chan *pb.QueuesUpstreamRequest, 10),
 		responseCh:         make(chan *pb.QueuesUpstreamResponse, 10),
 		doneCh:             make(chan bool, 1),
-		client:             client,
+		grpcClient:         streamClient.client.KubemqClient,
+		streamClient:       streamClient,
 		connectionState:    atomic.NewBool(false),
 	}
 	u.upstreamCtx, u.upstreamCancel = context.WithCancel(ctx)
@@ -40,7 +43,13 @@ func newUpstream(ctx context.Context, client pb.KubemqClient) *upstream {
 	time.Sleep(time.Second)
 	return u
 }
-
+func (u *upstream) sendOnConnectionState(msg string) {
+	if u.streamClient.client.opts.connectionNotificationFunc != nil {
+		go func() {
+			u.streamClient.client.opts.connectionNotificationFunc(msg)
+		}()
+	}
+}
 func (u *upstream) close() {
 	u.setIsClose(true)
 	u.upstreamCancel()
@@ -79,13 +88,16 @@ func (u *upstream) connectStream(ctx context.Context) {
 	defer func() {
 		u.doneCh <- true
 		u.connectionState.Store(false)
+		u.sendOnConnectionState(fmt.Sprintf("grpc queue client upstream disconnected"))
 	}()
-	stream, err := u.client.QueuesUpstream(ctx)
+	stream, err := u.grpcClient.QueuesUpstream(ctx)
 	if err != nil {
 		u.errCh <- err
+		u.sendOnConnectionState(fmt.Sprintf("grpc queue client upstream connection error, %s", err.Error()))
 		return
 	}
 	u.connectionState.Store(true)
+	u.sendOnConnectionState(fmt.Sprintf("grpc queue client upstream connected"))
 	go func() {
 		for {
 			res, err := stream.Recv()
@@ -94,6 +106,7 @@ func (u *upstream) connectStream(ctx context.Context) {
 					return
 				}
 				u.errCh <- err
+				u.sendOnConnectionState(fmt.Sprintf("grpc queue client upstream receive error, %s", err.Error()))
 				return
 			}
 			select {
@@ -115,6 +128,7 @@ func (u *upstream) connectStream(ctx context.Context) {
 					return
 				}
 				u.errCh <- err
+				u.sendOnConnectionState(fmt.Sprintf("grpc queue client updatream send error, %s", err.Error()))
 				return
 			}
 		case <-stream.Context().Done():

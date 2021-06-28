@@ -20,12 +20,13 @@ type downstream struct {
 	responseCh          chan *pb.QueuesDownstreamResponse
 	errCh               chan error
 	doneCh              chan bool
-	client              pb.KubemqClient
+	grpcClient          pb.KubemqClient
+	streamClient        *QueuesStreamClient
 	isClosed            bool
 	connectionState     *atomic.Bool
 }
 
-func newDownstream(ctx context.Context, client pb.KubemqClient) *downstream {
+func newDownstream(ctx context.Context, streamClient *QueuesStreamClient) *downstream {
 
 	d := &downstream{
 		Mutex:               sync.Mutex{},
@@ -37,7 +38,8 @@ func newDownstream(ctx context.Context, client pb.KubemqClient) *downstream {
 		responseCh:          make(chan *pb.QueuesDownstreamResponse, 10),
 		errCh:               make(chan error, 10),
 		doneCh:              make(chan bool, 1),
-		client:              client,
+		grpcClient:          streamClient.client.KubemqClient,
+		streamClient:        streamClient,
 		isClosed:            false,
 		connectionState:     atomic.NewBool(false),
 	}
@@ -60,6 +62,13 @@ func (d *downstream) getIsClose() bool {
 	d.Lock()
 	defer d.Unlock()
 	return d.isClosed
+}
+func (d *downstream) sendOnConnectionState(msg string) {
+	if d.streamClient.client.opts.connectionNotificationFunc != nil {
+		go func() {
+			d.streamClient.client.opts.connectionNotificationFunc(msg)
+		}()
+	}
 }
 func (d *downstream) createPendingTransaction(request *pb.QueuesDownstreamRequest) *responseHandler {
 	d.Lock()
@@ -109,13 +118,16 @@ func (d *downstream) connectStream(ctx context.Context) {
 	defer func() {
 		d.doneCh <- true
 		d.connectionState.Store(false)
+		d.sendOnConnectionState(fmt.Sprintf("grpc queue client downstream disconnected"))
 	}()
-	stream, err := d.client.QueuesDownstream(ctx)
+	stream, err := d.grpcClient.QueuesDownstream(ctx)
 	if err != nil {
 		d.errCh <- err
+		d.sendOnConnectionState(fmt.Sprintf("grpc queue client downstream connection error, %s", err.Error()))
 		return
 	}
 	d.connectionState.Store(true)
+	d.sendOnConnectionState(fmt.Sprintf("grpc queue client downstream connected"))
 	go func() {
 		for {
 			res, err := stream.Recv()
@@ -124,6 +136,7 @@ func (d *downstream) connectStream(ctx context.Context) {
 					return
 				}
 				d.errCh <- err
+				d.sendOnConnectionState(fmt.Sprintf("grpc queue client downstream receive error, %s", err.Error()))
 				return
 			}
 			select {
@@ -145,6 +158,7 @@ func (d *downstream) connectStream(ctx context.Context) {
 					return
 				}
 				d.errCh <- err
+				d.sendOnConnectionState(fmt.Sprintf("grpc queue client downstream send error, %s", err.Error()))
 				return
 			}
 		case <-stream.Context().Done():
@@ -265,7 +279,7 @@ func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId st
 		}
 		return pollResponse, nil
 	case connectionErr := <-respHandler.errCh:
-		return nil, fmt.Errorf("client connection error, %s", connectionErr.Error())
+		return nil, fmt.Errorf("grpcClient connection error, %s", connectionErr.Error())
 	case <-waitResponseCtx.Done():
 		d.deletePendingTransaction(pbReq.RequestID)
 		return nil, fmt.Errorf("timout waiting response for poll messages request")

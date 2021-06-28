@@ -21,16 +21,17 @@ func NewQueuesStreamClient(ctx context.Context, op ...Option) (*QueuesStreamClie
 	if err != nil {
 		return nil, err
 	}
-	return &QueuesStreamClient{
-		clientCtx:  ctx,
-		client:     client,
-		upstream:   newUpstream(ctx, client.KubemqClient),
-		downstream: newDownstream(ctx, client.KubemqClient),
-	}, nil
+	c := &QueuesStreamClient{
+		clientCtx: ctx,
+		client:    client,
+	}
+	c.upstream = newUpstream(ctx, c)
+	c.downstream = newDownstream(ctx, c)
+	return c, nil
 }
 func (q *QueuesStreamClient) Send(ctx context.Context, messages ...*QueueMessage) (*SendResult, error) {
 	if !q.upstream.isReady() {
-		return nil, fmt.Errorf("kubemq client connection lost, can't send messages ")
+		return nil, fmt.Errorf("kubemq grpc client connection lost, can't send messages ")
 	}
 	if len(messages) == 0 {
 		return nil, fmt.Errorf("no messages to send")
@@ -57,7 +58,7 @@ func (q *QueuesStreamClient) Send(ctx context.Context, messages ...*QueueMessage
 
 func (q *QueuesStreamClient) Poll(ctx context.Context, request *PollRequest) (*PollResponse, error) {
 	if !q.downstream.isReady() {
-		return nil, fmt.Errorf("kubemq client connection lost, can't poll messages")
+		return nil, fmt.Errorf("kubemq grpc client connection lost, can't poll messages")
 	}
 	pollReq, err := q.downstream.poll(ctx, request, q.client.GlobalClientId())
 	return pollReq, err
