@@ -16,6 +16,7 @@ type responseHandler struct {
 	handlerCancel   context.CancelFunc
 	requestCh       chan *pb.QueuesDownstreamRequest
 	responseCh      chan *pb.QueuesDownstreamResponse
+	errCh chan error
 	isActive        *atomic.Bool
 	requestClientId string
 	requestChannel  string
@@ -33,8 +34,19 @@ func (r *responseHandler) setIsEmptyResponse(isEmptyResponse bool) *responseHand
 
 func newResponseHandler() *responseHandler {
 	return &responseHandler{
-		responseCh: make(chan *pb.QueuesDownstreamResponse, 1),
-		isActive:   atomic.NewBool(false),
+		handlerCtx:      nil,
+		handlerCancel:   nil,
+		requestCh:       nil,
+		responseCh:      make(chan *pb.QueuesDownstreamResponse, 1),
+		errCh:           make(chan error,10),
+		isActive:        atomic.NewBool(false),
+		requestClientId: "",
+		requestChannel:  "",
+		transactionId:   "",
+		requestId:       "",
+		isEmptyResponse: false,
+		onErrorFunc:     nil,
+		onCompleteFunc:  nil,
 	}
 }
 
