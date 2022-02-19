@@ -10,7 +10,7 @@ require (
 	github.com/stretchr/testify v1.5.1
 	go.opencensus.io v0.22.0
 	go.uber.org/atomic v1.6.0
-	google.golang.org/grpc v1.35.0
+	google.golang.org/grpc v1.26.0
 )
 
 go 1.15
