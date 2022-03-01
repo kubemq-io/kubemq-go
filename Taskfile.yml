@@ -1,10 +1,10 @@
 # github.com/go-task/task
 
-version: '2'
+version: '3'
 
 vars:
   BINARY_NAME: kubemq-go
-  VERSION: v1.7.4
+  VERSION: v1.7.5
 
 tasks:
   check_update:
