@@ -64,9 +64,9 @@ func (es *EventsStoreClient) Stream(ctx context.Context, onResult func(result *E
 			return fmt.Errorf("context canceled during events message sending")
 		}
 	}
+	eventsResultCh := make(chan *EventStoreResult, 1)
+	go es.client.StreamEventsStore(ctx, eventsCh, eventsResultCh, errCh)
 	go func() {
-		eventsResultCh := make(chan *EventStoreResult, 1)
-		es.client.StreamEventsStore(ctx, eventsCh, eventsResultCh, errCh)
 		for {
 			select {
 			case result := <-eventsResultCh:
