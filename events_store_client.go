@@ -44,11 +44,17 @@ func NewEventsStoreClient(ctx context.Context, op ...Option) (*EventsStoreClient
 }
 
 func (es *EventsStoreClient) Send(ctx context.Context, message *EventStore) (*EventStoreResult, error) {
+	if err:=es.isClientReady();err!=nil{
+		return nil,err
+	}
 	message.transport = es.client.transport
 	return es.client.SetEventStore(message).Send(ctx)
 }
 
 func (es *EventsStoreClient) Stream(ctx context.Context, onResult func(result *EventStoreResult, err error)) (func(msg *EventStore) error, error) {
+	if err:=es.isClientReady();err!=nil{
+		return nil,err
+	}
 	if onResult == nil {
 		return nil, fmt.Errorf("events stream result callback function is required")
 	}
@@ -82,6 +88,9 @@ func (es *EventsStoreClient) Stream(ctx context.Context, onResult func(result *E
 }
 
 func (es *EventsStoreClient) Subscribe(ctx context.Context, request *EventsStoreSubscription, onEvent func(msg *EventStoreReceive, err error)) error {
+	if err:=es.isClientReady();err!=nil{
+		return err
+	}
 	if onEvent == nil {
 		return fmt.Errorf("events store subscription callback function is required")
 	}
@@ -109,5 +118,16 @@ func (es *EventsStoreClient) Subscribe(ctx context.Context, request *EventsStore
 }
 
 func (es *EventsStoreClient) Close() error {
+	if err:=es.isClientReady();err!=nil{
+		return err
+	}
 	return es.client.Close()
 }
+
+func (es *EventsStoreClient) isClientReady() error {
+	if es.client==nil {
+		return fmt.Errorf("client is not initialized")
+	}
+	return nil
+}
+

@@ -42,14 +42,23 @@ func NewCommandsClient(ctx context.Context, op ...Option) (*CommandsClient, erro
 }
 
 func (c *CommandsClient) Send(ctx context.Context, request *Command) (*CommandResponse, error) {
+	if err:=c.isClientReady();err!=nil{
+		return nil,err
+	}
 	request.transport = c.client.transport
 	return c.client.SetCommand(request).Send(ctx)
 }
 func (c *CommandsClient) Response(ctx context.Context, response *Response) error {
+	if err:=c.isClientReady();err!=nil{
+		return err
+	}
 	response.transport = c.client.transport
 	return c.client.SetResponse(response).Send(ctx)
 }
 func (c *CommandsClient) Subscribe(ctx context.Context, request *CommandsSubscription, onCommandReceive func(cmd *CommandReceive, err error)) error {
+	if err:=c.isClientReady();err!=nil{
+		return err
+	}
 	if onCommandReceive == nil {
 		return fmt.Errorf("commands request subscription callback function is required")
 	}
@@ -78,4 +87,12 @@ func (c *CommandsClient) Subscribe(ctx context.Context, request *CommandsSubscri
 
 func (c *CommandsClient) Close() error {
 	return c.client.Close()
+}
+
+
+func (c *CommandsClient) isClientReady() error {
+	if c.client==nil {
+		return fmt.Errorf("client is not initialized")
+	}
+	return nil
 }

@@ -44,11 +44,17 @@ func NewEventsClient(ctx context.Context, op ...Option) (*EventsClient, error) {
 }
 
 func (e *EventsClient) Send(ctx context.Context, message *Event) error {
+	if err:=e.isClientReady();err!=nil{
+		return err
+	}
 	message.transport = e.client.transport
 	return e.client.SetEvent(message).Send(ctx)
 }
 
 func (e *EventsClient) Stream(ctx context.Context, onError func(err error)) (func(msg *Event) error, error) {
+	if err:=e.isClientReady();err!=nil{
+		return nil,err
+	}
 	if onError == nil {
 		return nil, fmt.Errorf("events stream error callback function is required")
 	}
@@ -63,8 +69,8 @@ func (e *EventsClient) Stream(ctx context.Context, onError func(err error)) (fun
 			return fmt.Errorf("context canceled during events message sending")
 		}
 	}
+	go e.client.StreamEvents(ctx, eventsCh, errCh)
 	go func() {
-		e.client.StreamEvents(ctx, eventsCh, errCh)
 		for {
 			select {
 			case err := <-errCh:
@@ -78,6 +84,9 @@ func (e *EventsClient) Stream(ctx context.Context, onError func(err error)) (fun
 }
 
 func (e *EventsClient) Subscribe(ctx context.Context, request *EventsSubscription, onEvent func(msg *Event, err error)) error {
+	if err:=e.isClientReady();err!=nil{
+		return err
+	}
 	if onEvent == nil {
 		return fmt.Errorf("events subscription callback function is required")
 	}
@@ -106,4 +115,11 @@ func (e *EventsClient) Subscribe(ctx context.Context, request *EventsSubscriptio
 
 func (e *EventsClient) Close() error {
 	return e.client.Close()
+}
+
+func (e *EventsClient) isClientReady() error {
+	if e.client==nil {
+		return fmt.Errorf("client is not initialized")
+	}
+	return nil
 }
