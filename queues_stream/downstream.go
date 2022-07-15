@@ -127,7 +127,7 @@ func (d *downstream) connectStream(ctx context.Context) {
 		return
 	}
 	d.connectionState.Store(true)
-	d.sendOnConnectionState(fmt.Sprintf("grpc queue client downstream connected"))
+	d.sendOnConnectionState("grpc queue client downstream connected")
 	go func() {
 		for {
 			res, err := stream.Recv()
