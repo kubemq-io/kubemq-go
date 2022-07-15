@@ -88,7 +88,7 @@ func (u *upstream) connectStream(ctx context.Context) {
 	defer func() {
 		u.doneCh <- true
 		u.connectionState.Store(false)
-		u.sendOnConnectionState(fmt.Sprintf("grpc queue client upstream disconnected"))
+		u.sendOnConnectionState("grpc queue client upstream disconnected")
 	}()
 	stream, err := u.grpcClient.QueuesUpstream(ctx)
 	if err != nil {
@@ -97,7 +97,7 @@ func (u *upstream) connectStream(ctx context.Context) {
 		return
 	}
 	u.connectionState.Store(true)
-	u.sendOnConnectionState(fmt.Sprintf("grpc queue client upstream connected"))
+	u.sendOnConnectionState("grpc queue client upstream connected")
 	go func() {
 		for {
 			res, err := stream.Recv()
