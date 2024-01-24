@@ -41,26 +41,30 @@ func NewQueriesClient(ctx context.Context, op ...Option) (*QueriesClient, error)
 }
 
 func (q *QueriesClient) Send(ctx context.Context, request *Query) (*QueryResponse, error) {
-	if err:=q.isClientReady();err!=nil{
-		return nil,err
+	if err := q.isClientReady(); err != nil {
+		return nil, err
 	}
 	request.transport = q.client.transport
 	return q.client.SetQuery(request).Send(ctx)
 }
 func (q *QueriesClient) Response(ctx context.Context, response *Response) error {
-	if err:=q.isClientReady();err!=nil{
+	if err := q.isClientReady(); err != nil {
 		return err
 	}
 	response.transport = q.client.transport
 	return q.client.SetResponse(response).Send(ctx)
 }
 func (q *QueriesClient) Subscribe(ctx context.Context, request *QueriesSubscription, onQueryReceive func(query *QueryReceive, err error)) error {
-	if err:=q.isClientReady();err!=nil{
+	if err := q.isClientReady(); err != nil {
 		return err
 	}
 	if onQueryReceive == nil {
 		return fmt.Errorf("queries request subscription callback function is required")
 	}
+	if err := request.Complete(q.client.opts).Validate(); err != nil {
+		return err
+	}
+
 	errCh := make(chan error, 1)
 	queriesCh, err := q.client.SubscribeToQueriesWithRequest(ctx, request, errCh)
 	if err != nil {
@@ -85,9 +89,8 @@ func (q *QueriesClient) Close() error {
 	return q.client.Close()
 }
 
-
 func (q *QueriesClient) isClientReady() error {
-	if q.client==nil {
+	if q.client == nil {
 		return fmt.Errorf("client is not initialized")
 	}
 	return nil
