@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/kubemq-io/kubemq-go/v2/config"
+	"github.com/kubemq-io/kubemq-go/v2/grpc"
 	"github.com/kubemq-io/kubemq-go/v2/pubsub/events"
 	"github.com/kubemq-io/kubemq-go/v2/pubsub/events_store"
-	"github.com/kubemq-io/kubemq-go/v2/pubsub/grpc"
 	"time"
 )
 
@@ -115,6 +115,13 @@ func (c *Client) SubscribeToEventsStore(ctx context.Context, subscription *event
 		}
 	}()
 	return nil
+}
+
+func (c *Client) Ping(ctx context.Context) (*grpc.ServerInfo, error) {
+	if c.clientCtx.Err() != nil {
+		return nil, fmt.Errorf("client is closed")
+	}
+	return c.transport.Ping(ctx)
 }
 
 func (c *Client) Close() error {
