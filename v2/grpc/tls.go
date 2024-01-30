@@ -3,12 +3,12 @@ package grpc
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"github.com/kubemq-io/kubemq-go/v2/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"os"
 )
 
 func getTLSConnectionOptions(cfg *config.TlsConfig) ([]grpc.DialOption, error) {
@@ -22,33 +22,23 @@ func getTLSConnectionOptions(cfg *config.TlsConfig) ([]grpc.DialOption, error) {
 		options = append(options, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		return options, nil
 	}
-	if cfg.SkipVerifyInsecure {
-		options = append(options)
-	}
-	if cfg.Cert == "" && cfg.Key == "" {
+
+	if cfg.CertFile == "" && cfg.KeyFile == "" {
 		return options, nil
 	}
-	certBlock, _ := pem.Decode([]byte(cfg.Cert))
-	if certBlock == nil {
-		return nil, fmt.Errorf("failed to parse tls certificate PEM")
-	}
-	keyBlock, _ := pem.Decode([]byte(cfg.Key))
-	if keyBlock == nil {
-		return nil, fmt.Errorf("failed to parse tls key PEM")
-	}
-	clientCert, err := tls.X509KeyPair(pem.EncodeToMemory(certBlock), pem.EncodeToMemory(keyBlock))
+	clientCert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load client cert and key: %w", err)
+		return nil, fmt.Errorf("failed to load client cert %s and key %s, %w", cfg.CertFile, cfg.KeyFile, err)
 	}
 	var certPool *x509.CertPool
-	if cfg.Ca != "" {
-		caBlock, _ := pem.Decode([]byte(cfg.Ca))
-		if caBlock == nil {
-			return nil, fmt.Errorf("failed to parse tls ca PEM")
+	if cfg.CaFile != "" {
+		caCert, err := os.ReadFile(cfg.CaFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read ca cert file %s, %w", cfg.CaFile, err)
 		}
 		certPool = x509.NewCertPool()
-		if ok := certPool.AppendCertsFromPEM(caBlock.Bytes); !ok {
-			return nil, fmt.Errorf("failed to append ca certs")
+		if ok := certPool.AppendCertsFromPEM(caCert); !ok {
+			return nil, fmt.Errorf("failed to append ca cert %s to cert pool", cfg.CaFile)
 		}
 	}
 	tlsConfig := &tls.Config{
