@@ -8,7 +8,6 @@ import (
 const (
 	defaultMaxSendSize              = 1024 * 1024 * 100 // 100MB
 	defaultMaxRcvSize               = 1024 * 1024 * 100 // 100MB
-	defaultDisableAutoReconnect     = false
 	defaultReconnectIntervalSeconds = 5
 )
 
@@ -110,6 +109,11 @@ func (c *Connection) Validate() error {
 	}
 	if c.ReconnectIntervalSeconds < 0 {
 		return fmt.Errorf("connection reconnect interval must be greater than 0")
+	}
+	if c.Tls != nil {
+		if err := c.Tls.validate(); err != nil {
+			return err
+		}
 	}
 	if c.KeepAlive != nil {
 		if err := c.KeepAlive.validate(); err != nil {
