@@ -3,6 +3,7 @@ package kubemq
 import (
 	"context"
 	"fmt"
+	"github.com/kubemq-io/kubemq-go/common"
 )
 
 type QueriesClient struct {
@@ -85,6 +86,17 @@ func (q *QueriesClient) Subscribe(ctx context.Context, request *QueriesSubscript
 	return nil
 }
 
+func (q *QueriesClient) Create(ctx context.Context, channel string) error {
+	return CreateChannel(ctx, q.client, q.client.opts.clientId, channel, "queries")
+}
+
+func (q *QueriesClient) Delete(ctx context.Context, channel string) error {
+	return DeleteChannel(ctx, q.client, q.client.opts.clientId, channel, "queries")
+}
+
+func (q *QueriesClient) List(ctx context.Context, search string) ([]*common.CQChannel, error) {
+	return ListCQChannels(ctx, q.client, q.client.opts.clientId, "queries", search)
+}
 func (q *QueriesClient) Close() error {
 	return q.client.Close()
 }
