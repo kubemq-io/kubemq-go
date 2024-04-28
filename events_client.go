@@ -3,6 +3,7 @@ package kubemq
 import (
 	"context"
 	"fmt"
+	"github.com/kubemq-io/kubemq-go/common"
 )
 
 type EventsMessageHandler func(*Event)
@@ -44,7 +45,7 @@ func NewEventsClient(ctx context.Context, op ...Option) (*EventsClient, error) {
 }
 
 func (e *EventsClient) Send(ctx context.Context, message *Event) error {
-	if err:=e.isClientReady();err!=nil{
+	if err := e.isClientReady(); err != nil {
 		return err
 	}
 	message.transport = e.client.transport
@@ -52,8 +53,8 @@ func (e *EventsClient) Send(ctx context.Context, message *Event) error {
 }
 
 func (e *EventsClient) Stream(ctx context.Context, onError func(err error)) (func(msg *Event) error, error) {
-	if err:=e.isClientReady();err!=nil{
-		return nil,err
+	if err := e.isClientReady(); err != nil {
+		return nil, err
 	}
 	if onError == nil {
 		return nil, fmt.Errorf("events stream error callback function is required")
@@ -84,7 +85,7 @@ func (e *EventsClient) Stream(ctx context.Context, onError func(err error)) (fun
 }
 
 func (e *EventsClient) Subscribe(ctx context.Context, request *EventsSubscription, onEvent func(msg *Event, err error)) error {
-	if err:=e.isClientReady();err!=nil{
+	if err := e.isClientReady(); err != nil {
 		return err
 	}
 	if onEvent == nil {
@@ -113,12 +114,23 @@ func (e *EventsClient) Subscribe(ctx context.Context, request *EventsSubscriptio
 	return nil
 }
 
+func (e *EventsClient) Create(ctx context.Context, channel string) error {
+	return CreateChannel(ctx, e.client, e.client.opts.clientId, channel, "events")
+}
+
+func (e *EventsClient) Delete(ctx context.Context, channel string) error {
+	return DeleteChannel(ctx, e.client, e.client.opts.clientId, channel, "events")
+}
+
+func (e *EventsClient) List(ctx context.Context, search string) ([]*common.PubSubChannel, error) {
+	return ListPubSubChannels(ctx, e.client, e.client.opts.clientId, "events", search)
+}
 func (e *EventsClient) Close() error {
 	return e.client.Close()
 }
 
 func (e *EventsClient) isClientReady() error {
-	if e.client==nil {
+	if e.client == nil {
 		return fmt.Errorf("client is not initialized")
 	}
 	return nil

@@ -3,6 +3,7 @@ package kubemq
 import (
 	"context"
 	"fmt"
+	"github.com/kubemq-io/kubemq-go/common"
 	pb "github.com/kubemq-io/protobuf/go"
 )
 
@@ -74,6 +75,16 @@ func (req *QueueTransactionMessageRequest) Validate() error {
 
 type QueuesClient struct {
 	client *Client
+}
+
+func NewQueuesClient(ctx context.Context, op ...Option) (*QueuesClient, error) {
+	client, err := NewClient(ctx, op...)
+	if err != nil {
+		return nil, err
+	}
+	return &QueuesClient{
+		client: client,
+	}, nil
 }
 
 func NewQueuesStreamClient(ctx context.Context, op ...Option) (*QueuesClient, error) {
@@ -236,6 +247,18 @@ func (q *QueuesClient) Transaction(ctx context.Context, request *QueueTransactio
 }
 func (q *QueuesClient) QueuesInfo(ctx context.Context, filter string) (*QueuesInfo, error) {
 	return q.client.transport.QueuesInfo(ctx, filter)
+}
+
+func (q *QueuesClient) Create(ctx context.Context, channel string) error {
+	return CreateChannel(ctx, q.client, q.client.opts.clientId, channel, "queues")
+}
+
+func (q *QueuesClient) Delete(ctx context.Context, channel string) error {
+	return DeleteChannel(ctx, q.client, q.client.opts.clientId, channel, "queues")
+}
+
+func (q *QueuesClient) List(ctx context.Context, search string) ([]*common.QueuesChannel, error) {
+	return ListQueuesChannels(ctx, q.client, q.client.opts.clientId, search)
 }
 
 func (q *QueuesClient) Close() error {
