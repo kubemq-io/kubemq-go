@@ -3,6 +3,9 @@ package queues_stream
 import (
 	"context"
 	"fmt"
+	"github.com/kubemq-io/kubemq-go"
+	"github.com/kubemq-io/kubemq-go/common"
+	"sync"
 	"time"
 
 	"github.com/kubemq-io/kubemq-go/pkg/uuid"
@@ -10,6 +13,7 @@ import (
 )
 
 type QueuesStreamClient struct {
+	sync.Mutex
 	clientCtx  context.Context
 	client     *GrpcClient
 	upstream   *upstream
@@ -25,11 +29,15 @@ func NewQueuesStreamClient(ctx context.Context, op ...Option) (*QueuesStreamClie
 		clientCtx: ctx,
 		client:    client,
 	}
-	c.upstream = newUpstream(ctx, c)
-	c.downstream = newDownstream(ctx, c)
+
 	return c, nil
 }
 func (q *QueuesStreamClient) Send(ctx context.Context, messages ...*QueueMessage) (*SendResult, error) {
+	q.Lock()
+	if q.upstream == nil {
+		q.upstream = newUpstream(ctx, q)
+	}
+	q.Unlock()
 	if !q.upstream.isReady() {
 		return nil, fmt.Errorf("kubemq grpc client connection lost, can't send messages ")
 	}
@@ -57,6 +65,11 @@ func (q *QueuesStreamClient) Send(ctx context.Context, messages ...*QueueMessage
 }
 
 func (q *QueuesStreamClient) Poll(ctx context.Context, request *PollRequest) (*PollResponse, error) {
+	q.Lock()
+	if q.downstream == nil {
+		q.downstream = newDownstream(ctx, q)
+	}
+	q.Unlock()
 	if !q.downstream.isReady() {
 		return nil, fmt.Errorf("kubemq grpc client connection lost, can't poll messages")
 	}
@@ -98,9 +111,109 @@ func (q *QueuesStreamClient) QueuesInfo(ctx context.Context, filter string) (*Qu
 	return fromQueuesInfoPb(resp.Info), nil
 }
 
+func (q *QueuesStreamClient) Create(ctx context.Context, channel string) error {
+	clientId := q.client.GlobalClientId()
+	resp, err := q.client.SendRequest(ctx, &pb.Request{
+		RequestID:       uuid.New(),
+		RequestTypeData: 2,
+		ClientID:        clientId,
+		Channel:         "kubemq.cluster.internal.requests",
+		Metadata:        "create-channel",
+		Body:            nil,
+		ReplyChannel:    "",
+		Timeout:         10000,
+		CacheKey:        "",
+		CacheTTL:        0,
+		Span:            nil,
+		Tags: map[string]string{
+			"channel_type": "queues",
+			"channel":      channel,
+			"client_id":    clientId,
+		}})
+
+	if err != nil {
+		return fmt.Errorf("error sending create channel request: %s", err.Error())
+	}
+
+	if resp.Error != "" {
+		return fmt.Errorf("error creating channel: %s", resp.Error)
+	}
+
+	return nil
+}
+
+func (q *QueuesStreamClient) Delete(ctx context.Context, channel string) error {
+	clientId := q.client.GlobalClientId()
+	resp, err := q.client.SendRequest(ctx, &pb.Request{
+		RequestID:       uuid.New(),
+		RequestTypeData: 2,
+		ClientID:        clientId,
+		Channel:         "kubemq.cluster.internal.requests",
+		Metadata:        "delete-channel",
+		Body:            nil,
+		ReplyChannel:    "",
+		Timeout:         10000,
+		CacheKey:        "",
+		CacheTTL:        0,
+		Span:            nil,
+		Tags: map[string]string{
+			"channel_type": "queues",
+			"channel":      channel,
+			"client_id":    clientId,
+		}})
+
+	if err != nil {
+		return fmt.Errorf("error sending delete channel request: %s", err.Error())
+	}
+
+	if resp.Error != "" {
+		return fmt.Errorf("error deleting channel: %s", resp.Error)
+	}
+
+	return nil
+}
+
+func (q *QueuesStreamClient) List(ctx context.Context, search string) ([]*common.QueuesChannel, error) {
+	clientId := q.client.GlobalClientId()
+	resp, err := q.client.SendRequest(ctx, &pb.Request{
+		RequestID:       uuid.New(),
+		RequestTypeData: 2,
+		ClientID:        clientId,
+		Channel:         "kubemq.cluster.internal.requests",
+		Metadata:        "list-channels",
+		Body:            nil,
+		ReplyChannel:    "",
+		Timeout:         10000,
+		CacheKey:        "",
+		CacheTTL:        0,
+		Span:            nil,
+		Tags: map[string]string{
+			"channel_type": "queues",
+			"client_id":    clientId,
+			"search":       search,
+		}})
+
+	if err != nil {
+		return nil, fmt.Errorf("error sending list channel request: %s", err.Error())
+	}
+
+	if resp.Error != "" {
+		return nil, fmt.Errorf("error list channels: %s", resp.Error)
+	}
+	channels, err := kubemq.DecodeQueuesChannelList(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return channels, nil
+}
+
 func (q *QueuesStreamClient) Close() error {
 	time.Sleep(100 * time.Millisecond)
-	q.upstream.close()
-	q.downstream.close()
+	if q.upstream != nil {
+		q.upstream.close()
+	}
+	if q.downstream != nil {
+		q.downstream.close()
+	}
 	return q.client.Close()
 }

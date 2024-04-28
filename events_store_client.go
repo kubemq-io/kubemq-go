@@ -3,6 +3,7 @@ package kubemq
 import (
 	"context"
 	"fmt"
+	"github.com/kubemq-io/kubemq-go/common"
 )
 
 type EventsStoreClient struct {
@@ -118,6 +119,18 @@ func (es *EventsStoreClient) Subscribe(ctx context.Context, request *EventsStore
 		}
 	}()
 	return nil
+}
+
+func (es *EventsStoreClient) Create(ctx context.Context, channel string) error {
+	return CreateChannel(ctx, es.client, es.client.opts.clientId, channel, "events_store")
+}
+
+func (es *EventsStoreClient) Delete(ctx context.Context, channel string) error {
+	return DeleteChannel(ctx, es.client, es.client.opts.clientId, channel, "events_store")
+}
+
+func (es *EventsStoreClient) List(ctx context.Context, search string) ([]*common.PubSubChannel, error) {
+	return ListPubSubChannels(ctx, es.client, es.client.opts.clientId, "events_store", search)
 }
 
 func (es *EventsStoreClient) Close() error {

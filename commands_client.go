@@ -3,6 +3,7 @@ package kubemq
 import (
 	"context"
 	"fmt"
+	"github.com/kubemq-io/kubemq-go/common"
 )
 
 type CommandsClient struct {
@@ -42,21 +43,21 @@ func NewCommandsClient(ctx context.Context, op ...Option) (*CommandsClient, erro
 }
 
 func (c *CommandsClient) Send(ctx context.Context, request *Command) (*CommandResponse, error) {
-	if err:=c.isClientReady();err!=nil{
-		return nil,err
+	if err := c.isClientReady(); err != nil {
+		return nil, err
 	}
 	request.transport = c.client.transport
 	return c.client.SetCommand(request).Send(ctx)
 }
 func (c *CommandsClient) Response(ctx context.Context, response *Response) error {
-	if err:=c.isClientReady();err!=nil{
+	if err := c.isClientReady(); err != nil {
 		return err
 	}
 	response.transport = c.client.transport
 	return c.client.SetResponse(response).Send(ctx)
 }
 func (c *CommandsClient) Subscribe(ctx context.Context, request *CommandsSubscription, onCommandReceive func(cmd *CommandReceive, err error)) error {
-	if err:=c.isClientReady();err!=nil{
+	if err := c.isClientReady(); err != nil {
 		return err
 	}
 	if onCommandReceive == nil {
@@ -85,13 +86,24 @@ func (c *CommandsClient) Subscribe(ctx context.Context, request *CommandsSubscri
 	return nil
 }
 
+func (c *CommandsClient) Create(ctx context.Context, channel string) error {
+	return CreateChannel(ctx, c.client, c.client.opts.clientId, channel, "commands")
+}
+
+func (c *CommandsClient) Delete(ctx context.Context, channel string) error {
+	return DeleteChannel(ctx, c.client, c.client.opts.clientId, channel, "commands")
+}
+
+func (c *CommandsClient) List(ctx context.Context, search string) ([]*common.CQChannel, error) {
+	return ListCQChannels(ctx, c.client, c.client.opts.clientId, "commands", search)
+}
+
 func (c *CommandsClient) Close() error {
 	return c.client.Close()
 }
 
-
 func (c *CommandsClient) isClientReady() error {
-	if c.client==nil {
+	if c.client == nil {
 		return fmt.Errorf("client is not initialized")
 	}
 	return nil
