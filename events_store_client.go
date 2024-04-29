@@ -6,9 +6,12 @@ import (
 	"github.com/kubemq-io/kubemq-go/common"
 )
 
+// EventsStoreClient is a struct that holds a client instance.
 type EventsStoreClient struct {
 	client *Client
 }
+
+// EventsStoreSubscription is a struct that holds the subscription details.
 type EventsStoreSubscription struct {
 	Channel          string
 	Group            string
@@ -16,12 +19,15 @@ type EventsStoreSubscription struct {
 	SubscriptionType SubscriptionOption
 }
 
+// Complete is a method that completes the subscription with the provided options.
 func (es *EventsStoreSubscription) Complete(opts *Options) *EventsStoreSubscription {
 	if es.ClientId == "" {
 		es.ClientId = opts.clientId
 	}
 	return es
 }
+
+// Validate is a method that validates the subscription details.
 func (es *EventsStoreSubscription) Validate() error {
 	if es.Channel == "" {
 		return fmt.Errorf("events store subscription must have a channel")
@@ -34,6 +40,8 @@ func (es *EventsStoreSubscription) Validate() error {
 	}
 	return nil
 }
+
+// NewEventsStoreClient is a function that creates a new EventsStoreClient.
 func NewEventsStoreClient(ctx context.Context, op ...Option) (*EventsStoreClient, error) {
 	client, err := NewClient(ctx, op...)
 	if err != nil {
@@ -44,6 +52,7 @@ func NewEventsStoreClient(ctx context.Context, op ...Option) (*EventsStoreClient
 	}, nil
 }
 
+// Send is a method that sends an event to the store.
 func (es *EventsStoreClient) Send(ctx context.Context, message *EventStore) (*EventStoreResult, error) {
 	if err := es.isClientReady(); err != nil {
 		return nil, err
@@ -52,6 +61,7 @@ func (es *EventsStoreClient) Send(ctx context.Context, message *EventStore) (*Ev
 	return es.client.SetEventStore(message).Send(ctx)
 }
 
+// Stream is a method that streams events from the store.
 func (es *EventsStoreClient) Stream(ctx context.Context, onResult func(result *EventStoreResult, err error)) (func(msg *EventStore) error, error) {
 	if err := es.isClientReady(); err != nil {
 		return nil, err
@@ -91,6 +101,7 @@ func (es *EventsStoreClient) Stream(ctx context.Context, onResult func(result *E
 	return sendFunc, nil
 }
 
+// Subscribe is a method that subscribes to events from the store.
 func (es *EventsStoreClient) Subscribe(ctx context.Context, request *EventsStoreSubscription, onEvent func(msg *EventStoreReceive, err error)) error {
 	if err := es.isClientReady(); err != nil {
 		return err
@@ -121,18 +132,22 @@ func (es *EventsStoreClient) Subscribe(ctx context.Context, request *EventsStore
 	return nil
 }
 
+// Create is a method that creates a new channel in the events store.
 func (es *EventsStoreClient) Create(ctx context.Context, channel string) error {
 	return CreateChannel(ctx, es.client, es.client.opts.clientId, channel, "events_store")
 }
 
+// Delete is a method that deletes a channel from the events store.
 func (es *EventsStoreClient) Delete(ctx context.Context, channel string) error {
 	return DeleteChannel(ctx, es.client, es.client.opts.clientId, channel, "events_store")
 }
 
+// List is a method that lists all channels in the events store.
 func (es *EventsStoreClient) List(ctx context.Context, search string) ([]*common.PubSubChannel, error) {
 	return ListPubSubChannels(ctx, es.client, es.client.opts.clientId, "events_store", search)
 }
 
+// Close is a method that closes the client connection.
 func (es *EventsStoreClient) Close() error {
 	if err := es.isClientReady(); err != nil {
 		return err
@@ -140,6 +155,7 @@ func (es *EventsStoreClient) Close() error {
 	return es.client.Close()
 }
 
+// isClientReady is a method that checks if the client is ready.
 func (es *EventsStoreClient) isClientReady() error {
 	if es.client == nil {
 		return fmt.Errorf("client is not initialized")
