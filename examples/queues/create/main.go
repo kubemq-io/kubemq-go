@@ -2,17 +2,16 @@ package main
 
 import (
 	"context"
-	"github.com/kubemq-io/kubemq-go"
+	"github.com/kubemq-io/kubemq-go/queues_stream"
 	"log"
 )
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	queuesClient, err := kubemq.NewQueuesClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
-		kubemq.WithClientId("example"),
-		kubemq.WithTransportType(kubemq.TransportTypeGRPC))
+	queuesClient, err := queues_stream.NewQueuesStreamClient(ctx,
+		queues_stream.WithAddress("localhost", 50000),
+		queues_stream.WithClientId("example"))
 	if err != nil {
 		log.Fatal(err)
 	}
