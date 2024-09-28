@@ -80,3 +80,7 @@ func (r *Response) AddTrace(name string) *Trace {
 func (r *Response) Send(ctx context.Context) error {
 	return r.transport.SendResponse(ctx, r)
 }
+
+func (r *Response) String() string {
+	return "Response: RequestId: " + r.RequestId + ", ResponseTo: " + r.ResponseTo + ", Metadata: " + r.Metadata + ", Body: " + string(r.Body) + ", ClientId: " + r.ClientId + ", ExecutedAt: " + r.ExecutedAt.String() + ", Err: " + r.Err.Error()
+}
