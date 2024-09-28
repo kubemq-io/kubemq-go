@@ -8,12 +8,13 @@ import (
 
 // PollRequest - Request parameters for Poll function
 type PollRequest struct {
-	Channel     string `json:"Channel"`
-	MaxItems    int    `json:"max_items"`
-	WaitTimeout int    `json:"wait_timeout"`
-	AutoAck     bool   `json:"auto_ack"`
-	OnErrorFunc func(err error)
-	OnComplete  func()
+	Channel           string `json:"channel"`
+	MaxItems          int    `json:"max_items"`
+	WaitTimeout       int    `json:"wait_timeout"`
+	AutoAck           bool   `json:"auto_ack"`
+	VisibilitySeconds int    `json:"visibility_seconds"`
+	OnErrorFunc       func(err error)
+	OnComplete        func()
 }
 
 func (p *PollRequest) SetOnErrorFunc(onErrorFunc func(err error)) *PollRequest {
@@ -49,6 +50,10 @@ func (p *PollRequest) SetAutoAck(autoAck bool) *PollRequest {
 	return p
 }
 
+func (p *PollRequest) SetVisibilitySeconds(visibilitySeconds int) *PollRequest {
+	p.VisibilitySeconds = visibilitySeconds
+	return p
+}
 func (p *PollRequest) validateAndComplete(clientId string) (*pb.QueuesDownstreamRequest, error) {
 	if p.Channel == "" {
 		return nil, fmt.Errorf("request channel cannot be empty")
@@ -58,6 +63,12 @@ func (p *PollRequest) validateAndComplete(clientId string) (*pb.QueuesDownstream
 	}
 	if p.WaitTimeout < 0 {
 		return nil, fmt.Errorf("request wait timeout cannot be negative")
+	}
+	if p.VisibilitySeconds < 0 {
+		return nil, fmt.Errorf("request visibility seconds cannot be negative")
+	}
+	if p.AutoAck && p.VisibilitySeconds > 0 {
+		return nil, fmt.Errorf("request visibility seconds cannot be set with auto ack")
 	}
 	requestClientId := clientId
 	if requestClientId == "" {

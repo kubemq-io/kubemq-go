@@ -16,6 +16,7 @@ func newPollResponse(messages []*pb.QueueMessage, handler *responseHandler) *Pol
 		p.Messages = append(p.Messages, newQueueMessageFrom(message).setResponseHandler(handler))
 	}
 	p.responseHandler.setIsEmptyResponse(len(p.Messages) == 0)
+	p.responseHandler.setMessages(p.Messages)
 	return p
 }
 
