@@ -2,6 +2,7 @@ package kubemq
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -113,6 +114,10 @@ type QueryReceive struct {
 	Tags       map[string]string
 }
 
+func (qr *QueryReceive) String() string {
+	return fmt.Sprintf("Id: %s, ClientId: %s, Channel: %s, Metadata: %s, Body: %s, ResponseTo: %s, Tags: %v", qr.Id, qr.ClientId, qr.Channel, qr.Metadata, string(qr.Body), qr.ResponseTo, qr.Tags)
+}
+
 type QueryResponse struct {
 	QueryId          string
 	Executed         bool
@@ -123,4 +128,8 @@ type QueryResponse struct {
 	CacheHit         bool
 	Error            string
 	Tags             map[string]string
+}
+
+func (qr *QueryResponse) String() string {
+	return fmt.Sprintf("QueryId: %s, Executed: %v, ExecutedAt: %s, Metadata: %s, ResponseClientId: %s, Body: %s, CacheHit: %v, Error: %s, Tags: %v", qr.QueryId, qr.Executed, qr.ExecutedAt.String(), qr.Metadata, qr.ResponseClientId, string(qr.Body), qr.CacheHit, qr.Error, qr.Tags)
 }
