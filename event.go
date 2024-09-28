@@ -2,6 +2,7 @@ package kubemq
 
 import (
 	"context"
+	"fmt"
 )
 
 type Event struct {
@@ -71,4 +72,8 @@ func (e *Event) Send(ctx context.Context) error {
 		return ErrNoTransportDefined
 	}
 	return e.transport.SendEvent(ctx, e)
+}
+
+func (e *Event) String() string {
+	return fmt.Sprintf("Id: %s, Channel: %s, Metadata: %s, Body: %s, ClientId: %s, Tags: %s", e.Id, e.Channel, e.Metadata, e.Body, e.ClientId, e.Tags)
 }

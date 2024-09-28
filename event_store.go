@@ -2,6 +2,7 @@ package kubemq
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	pb "github.com/kubemq-io/protobuf/go"
@@ -92,6 +93,11 @@ type EventStoreReceive struct {
 	Body      []byte
 	ClientId  string
 	Tags      map[string]string
+}
+
+func (es *EventStoreReceive) String() string {
+	return fmt.Sprintf("Id: %s, Sequence: %d, Timestamp: %s, Channel: %s, Metadata: %s, Body: %s, ClientId: %s, Tags: %s", es.Id, es.Sequence, es.Timestamp.String(), es.Channel, es.Metadata, es.Body, es.ClientId, es.Tags)
+
 }
 
 type SubscriptionOption interface {
