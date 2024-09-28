@@ -34,7 +34,7 @@ func sendSubscribeEvents() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	time.Sleep(1 * time.Second)
+	time.Sleep(300 * time.Second)
 
 	err = eventsClient.Send(ctx, &kubemq.Event{
 		Channel:  "events-channel",
