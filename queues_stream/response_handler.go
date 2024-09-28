@@ -12,19 +12,22 @@ import (
 const requestTimout = 60 * time.Second
 
 type responseHandler struct {
-	handlerCtx      context.Context
-	handlerCancel   context.CancelFunc
-	requestCh       chan *pb.QueuesDownstreamRequest
-	responseCh      chan *pb.QueuesDownstreamResponse
-	errCh chan error
-	isActive        *atomic.Bool
-	requestClientId string
-	requestChannel  string
-	transactionId   string
-	requestId       string
-	isEmptyResponse bool
-	onErrorFunc     func(err error)
-	onCompleteFunc  func()
+	handlerCtx        context.Context
+	handlerCancel     context.CancelFunc
+	requestCh         chan *pb.QueuesDownstreamRequest
+	responseCh        chan *pb.QueuesDownstreamResponse
+	errCh             chan error
+	isActive          *atomic.Bool
+	requestClientId   string
+	requestChannel    string
+	transactionId     string
+	requestId         string
+	isEmptyResponse   bool
+	visibilitySeconds int
+	isAutoAck         bool
+	onErrorFunc       func(err error)
+	onCompleteFunc    func()
+	messages          []*QueueMessage
 }
 
 func (r *responseHandler) setIsEmptyResponse(isEmptyResponse bool) *responseHandler {
@@ -38,7 +41,7 @@ func newResponseHandler() *responseHandler {
 		handlerCancel:   nil,
 		requestCh:       nil,
 		responseCh:      make(chan *pb.QueuesDownstreamResponse, 1),
-		errCh:           make(chan error,10),
+		errCh:           make(chan error, 10),
 		isActive:        atomic.NewBool(false),
 		requestClientId: "",
 		requestChannel:  "",
@@ -72,10 +75,14 @@ func (r *responseHandler) Close() error {
 func (r *responseHandler) start(ctx context.Context) {
 	r.handlerCtx, r.handlerCancel = context.WithCancel(ctx)
 	r.isActive.Store(true)
+	for _, msg := range r.messages {
+		msg.startVisibilityTimer()
+
+	}
 }
 func (r *responseHandler) sendRequest(request *pb.QueuesDownstreamRequest) error {
 	if !r.isActive.Load() {
-		return fmt.Errorf("transaction is not ready to accept requests")
+		return fmt.Errorf("transaction is not ready to accept requests or already closed by AutoAck")
 	}
 	select {
 	case r.requestCh <- request:
@@ -125,6 +132,19 @@ func (r *responseHandler) sendError(err error) {
 		r.onErrorFunc(err)
 	}
 }
+func (r *responseHandler) setVisibilitySeconds(visibilitySeconds int) *responseHandler {
+	r.visibilitySeconds = visibilitySeconds
+	return r
+}
+
+func (r *responseHandler) setIsAutoAck(isAutoAck bool) *responseHandler {
+	r.isAutoAck = isAutoAck
+	return r
+}
+func (r *responseHandler) setMessages(messages []*QueueMessage) *responseHandler {
+	r.messages = messages
+	return r
+}
 func (r *responseHandler) sendComplete() {
 
 	r.isActive.Store(false)
@@ -155,6 +175,7 @@ func (r *responseHandler) AckAll() error {
 	if err != nil {
 		return err
 	}
+	r.markCompleted("ack all")
 	return nil
 }
 func (r *responseHandler) AckOffsets(offsets ...int64) error {
@@ -208,6 +229,7 @@ func (r *responseHandler) NAckAll() error {
 	if err != nil {
 		return err
 	}
+	r.markCompleted("nack all")
 	return nil
 }
 func (r *responseHandler) NAckOffsets(offsets ...int64) error {
@@ -263,6 +285,7 @@ func (r *responseHandler) ReQueueAll(channel string) error {
 	if err != nil {
 		return err
 	}
+	r.markCompleted("requeue all")
 	return nil
 }
 func (r *responseHandler) ReQueueOffsets(channel string, offsets ...int64) error {
@@ -297,4 +320,10 @@ func (r *responseHandler) ReQueueOffsets(channel string, offsets ...int64) error
 		return err
 	}
 	return nil
+}
+
+func (r *responseHandler) markCompleted(reason string) {
+	for _, msg := range r.messages {
+		msg.setCompleted(reason)
+	}
 }
