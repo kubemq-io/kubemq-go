@@ -2,6 +2,7 @@ package kubemq
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -99,6 +100,10 @@ type CommandReceive struct {
 	Tags       map[string]string
 }
 
+func (cr *CommandReceive) String() string {
+	return fmt.Sprintf("Id: %s, ClientId: %s, Channel: %s, Metadata: %s, Body: %s, ResponseTo: %s, Tags: %v", cr.Id, cr.ClientId, cr.Channel, cr.Metadata, string(cr.Body), cr.ResponseTo, cr.Tags)
+}
+
 type CommandResponse struct {
 	CommandId        string
 	ResponseClientId string
@@ -106,4 +111,8 @@ type CommandResponse struct {
 	ExecutedAt       time.Time
 	Error            string
 	Tags             map[string]string
+}
+
+func (cr *CommandResponse) String() string {
+	return fmt.Sprintf("CommandId: %s, ResponseClientId: %s, Executed: %v, ExecutedAt: %s, Error: %s, Tags: %v", cr.CommandId, cr.ResponseClientId, cr.Executed, cr.ExecutedAt.String(), cr.Error, cr.Tags)
 }
