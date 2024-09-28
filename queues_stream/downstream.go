@@ -70,14 +70,17 @@ func (d *downstream) sendOnConnectionState(msg string) {
 		}()
 	}
 }
-func (d *downstream) createPendingTransaction(request *pb.QueuesDownstreamRequest) *responseHandler {
+func (d *downstream) createPendingTransaction(request *pb.QueuesDownstreamRequest, visibilitySeconds int) *responseHandler {
 	d.Lock()
 	defer d.Unlock()
 	handler := newResponseHandler().
 		setRequestId(request.RequestID).
 		setRequestChanel(request.Channel).
 		setRequestClientId(request.ClientID).
-		setRequestCh(d.requestCh)
+		setRequestCh(d.requestCh).
+		setVisibilitySeconds(visibilitySeconds).
+		setIsAutoAck(request.AutoAck)
+
 	d.pendingTransactions[request.RequestID] = handler
 	return handler
 }
@@ -248,7 +251,7 @@ func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId st
 	if err != nil {
 		return nil, err
 	}
-	respHandler := d.createPendingTransaction(pbReq).
+	respHandler := d.createPendingTransaction(pbReq, request.VisibilitySeconds).
 		setOnErrorFunc(request.OnErrorFunc).
 		setOnCompleteFunc(request.OnComplete)
 	select {
