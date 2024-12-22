@@ -44,6 +44,10 @@ func (p *PollRequest) SetWaitTimeout(waitTimeout int) *PollRequest {
 	p.WaitTimeout = waitTimeout
 	return p
 }
+func (p *PollRequest) SetWaitTimeoutSeconds(waitTimeout int) *PollRequest {
+	p.WaitTimeout = waitTimeout * 1000
+	return p
+}
 
 func (p *PollRequest) SetAutoAck(autoAck bool) *PollRequest {
 	p.AutoAck = autoAck

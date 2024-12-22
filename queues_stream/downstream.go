@@ -264,7 +264,7 @@ func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId st
 	if waitFirstResponse == 0 {
 		waitFirstResponse = 60000
 	} else {
-		waitFirstResponse = request.WaitTimeout + 1000
+		waitFirstResponse = request.WaitTimeout + 10000
 	}
 	waitResponseCtx, waitResponseCancel := context.WithTimeout(ctx, time.Duration(waitFirstResponse)*time.Millisecond)
 	defer waitResponseCancel()
@@ -285,7 +285,7 @@ func (d *downstream) poll(ctx context.Context, request *PollRequest, clientId st
 		return nil, fmt.Errorf("grpcClient connection error, %s", connectionErr.Error())
 	case <-waitResponseCtx.Done():
 		d.deletePendingTransaction(pbReq.RequestID)
-		return nil, fmt.Errorf("timout waiting response for poll messages request")
+		return nil, fmt.Errorf("timeout waiting response for poll messages request")
 	case <-d.downstreamCtx.Done():
 		respHandler.sendError(d.downstreamCtx.Err())
 		respHandler.sendComplete()
