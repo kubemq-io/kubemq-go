@@ -1,10 +1,12 @@
 package kubemq
 
 import (
-	"context"
+	"fmt"
 	"time"
 )
 
+// Response is an outbound command/query response. It is NOT safe for concurrent
+// use — create a new Response for each send operation.
 type Response struct {
 	RequestId  string
 	ResponseTo string
@@ -14,73 +16,73 @@ type Response struct {
 	ExecutedAt time.Time
 	Err        error
 	Tags       map[string]string
-	transport  Transport
-	trace      *Trace
 }
 
+// NewResponse creates an empty Response.
 func NewResponse() *Response {
 	return &Response{}
 }
 
-// SetId - set response corresponded requestId - mandatory
+// SetRequestId sets the corresponding request ID for this response.
 func (r *Response) SetRequestId(id string) *Response {
 	r.RequestId = id
 	return r
 }
 
-// SetResponseTo - set response channel as received in CommandReceived or QueryReceived object - mandatory
+// SetResponseTo sets the response channel.
 func (r *Response) SetResponseTo(channel string) *Response {
 	r.ResponseTo = channel
 	return r
 }
 
-// SetMetadata - set metadata response, for query only
+// SetMetadata sets the response metadata (for query responses).
 func (r *Response) SetMetadata(metadata string) *Response {
 	r.Metadata = metadata
 	return r
 }
 
-// SetMetadata - set body response, for query only
+// SetBody sets the response body (for query responses).
 func (r *Response) SetBody(body []byte) *Response {
 	r.Body = body
 	return r
 }
 
-// SetTags - set response tags
+// SetTags sets the response tags.
 func (r *Response) SetTags(tags map[string]string) *Response {
 	r.Tags = tags
 	return r
 }
 
-// SetClientID - set clientId response, if not set default clientId will be used
+// SetClientId sets the client identifier for this response.
 func (r *Response) SetClientId(clientId string) *Response {
 	r.ClientId = clientId
 	return r
 }
 
-// SetError - set query or command execution error
+// SetError sets the execution error for this response.
 func (r *Response) SetError(err error) *Response {
 	r.Err = err
 	return r
 }
 
-// SetExecutedAt - set query or command execution time
+// SetExecutedAt sets the execution timestamp.
 func (r *Response) SetExecutedAt(executedAt time.Time) *Response {
 	r.ExecutedAt = executedAt
 	return r
 }
 
-// AddTrace - add tracing support to response
-func (r *Response) AddTrace(name string) *Trace {
-	r.trace = CreateTrace(name)
-	return r.trace
+// Validate checks all required fields and constraints.
+// Called automatically before send operations; can also be called explicitly.
+func (r *Response) Validate() error {
+	return validateResponse(r)
 }
 
-// Send - sending response to command or query request
-func (r *Response) Send(ctx context.Context) error {
-	return r.transport.SendResponse(ctx, r)
-}
-
+// String returns a human-readable representation of the response.
 func (r *Response) String() string {
-	return "Response: RequestId: " + r.RequestId + ", ResponseTo: " + r.ResponseTo + ", Metadata: " + r.Metadata + ", Body: " + string(r.Body) + ", ClientId: " + r.ClientId + ", ExecutedAt: " + r.ExecutedAt.String() + ", Err: " + r.Err.Error()
+	errStr := ""
+	if r.Err != nil {
+		errStr = r.Err.Error()
+	}
+	return fmt.Sprintf("RequestId: %s, ResponseTo: %s, Metadata: %s, Body: %s, ClientId: %s, ExecutedAt: %s, Err: %s",
+		r.RequestId, r.ResponseTo, r.Metadata, string(r.Body), r.ClientId, r.ExecutedAt.String(), errStr)
 }
