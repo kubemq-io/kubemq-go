@@ -1,64 +1,64 @@
 package kubemq
 
-import (
-	"context"
-	"fmt"
-)
+import "fmt"
 
+// Event is an outbound event message. It is NOT safe for concurrent use —
+// create a new Event for each send operation. Do not share Event instances
+// across goroutines.
 type Event struct {
-	Id        string
-	Channel   string
-	Metadata  string
-	Body      []byte
-	ClientId  string
-	Tags      map[string]string
-	transport Transport
+	Id       string
+	Channel  string
+	Metadata string
+	Body     []byte
+	ClientId string
+	Tags     map[string]string
 }
 
+// NewEvent creates an empty Event.
 func NewEvent() *Event {
 	return &Event{}
 }
 
-// SetId - set event id otherwise new random uuid will be set
+// SetId sets the event ID. If not set, a random UUID is generated.
 func (e *Event) SetId(id string) *Event {
 	e.Id = id
 	return e
 }
 
-// SetClientId - set event ClientId - mandatory if default client was not set
+// SetClientId sets the client identifier for this event.
 func (e *Event) SetClientId(clientId string) *Event {
 	e.ClientId = clientId
 	return e
 }
 
-// SetMetadata - set event metadata - mandatory if body field was not set
+// SetMetadata sets the event metadata.
 func (e *Event) SetMetadata(metadata string) *Event {
 	e.Metadata = metadata
 	return e
 }
 
-// SetChannel - set event channel - mandatory if default channel was not set
+// SetChannel sets the target channel for this event.
 func (e *Event) SetChannel(channel string) *Event {
 	e.Channel = channel
 	return e
 }
 
-// SetBody - set event body - mandatory if metadata field was not set
+// SetBody sets the event body payload.
 func (e *Event) SetBody(body []byte) *Event {
 	e.Body = body
 	return e
 }
 
-// SetTags - set key value tags to event message
+// SetTags replaces all tags on this event.
 func (e *Event) SetTags(tags map[string]string) *Event {
-	e.Tags = map[string]string{}
+	e.Tags = make(map[string]string, len(tags))
 	for key, value := range tags {
 		e.Tags[key] = value
 	}
 	return e
 }
 
-// AddTag - add key value tags to event message
+// AddTag adds a single key-value tag to this event.
 func (e *Event) AddTag(key, value string) *Event {
 	if e.Tags == nil {
 		e.Tags = map[string]string{}
@@ -67,13 +67,22 @@ func (e *Event) AddTag(key, value string) *Event {
 	return e
 }
 
-func (e *Event) Send(ctx context.Context) error {
-	if e.transport == nil {
-		return ErrNoTransportDefined
-	}
-	return e.transport.SendEvent(ctx, e)
+// Validate checks all required fields and constraints.
+// Called automatically before send operations; can also be called explicitly.
+func (e *Event) Validate() error {
+	return validateEvent(e, nil)
 }
 
+// String returns a human-readable representation of the event.
 func (e *Event) String() string {
-	return fmt.Sprintf("Id: %s, Channel: %s, Metadata: %s, Body: %s, ClientId: %s, Tags: %s", e.Id, e.Channel, e.Metadata, e.Body, e.ClientId, e.Tags)
+	return fmt.Sprintf("Id: %s, Channel: %s, Metadata: %s, Body: %s, ClientId: %s, Tags: %s",
+		e.Id, e.Channel, e.Metadata, e.Body, e.ClientId, e.Tags)
+}
+
+// EventResult contains the result of an event send operation.
+// Immutable after construction. Safe to read from multiple goroutines.
+type EventResult struct {
+	Id   string
+	Sent bool
+	Err  error
 }
