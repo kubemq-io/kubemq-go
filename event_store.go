@@ -1,67 +1,66 @@
 package kubemq
 
 import (
-	"context"
 	"fmt"
 	"time"
-
-	pb "github.com/kubemq-io/protobuf/go"
 )
 
+// EventStore is an outbound event-store message. It is NOT safe for concurrent
+// use — create a new EventStore for each send operation.
 type EventStore struct {
-	Id        string
-	Channel   string
-	Metadata  string
-	Body      []byte
-	ClientId  string
-	Tags      map[string]string
-	transport Transport
+	Id       string
+	Channel  string
+	Metadata string
+	Body     []byte
+	ClientId string
+	Tags     map[string]string
 }
 
+// NewEventStore creates an empty EventStore.
 func NewEventStore() *EventStore {
 	return &EventStore{}
 }
 
-// SetId - set event store id otherwise new random uuid will be set
+// SetId sets the event store message ID.
 func (es *EventStore) SetId(id string) *EventStore {
 	es.Id = id
 	return es
 }
 
-// SetClientId - set event store ClientId - mandatory if default client was not set
+// SetClientId sets the client identifier for this event store message.
 func (es *EventStore) SetClientId(clientId string) *EventStore {
 	es.ClientId = clientId
 	return es
 }
 
-// SetMetadata - set event store metadata - mandatory if body field was not set
+// SetMetadata sets the event store metadata.
 func (es *EventStore) SetMetadata(metadata string) *EventStore {
 	es.Metadata = metadata
 	return es
 }
 
-// SetChannel - set event store channel - mandatory if default channel was not set
+// SetChannel sets the target channel for this event store message.
 func (es *EventStore) SetChannel(channel string) *EventStore {
 	es.Channel = channel
 	return es
 }
 
-// SetBody - set event store body - mandatory if metadata field was not set
+// SetBody sets the event store body payload.
 func (es *EventStore) SetBody(body []byte) *EventStore {
 	es.Body = body
 	return es
 }
 
-// SetTags - set key value tags to event store message
+// SetTags replaces all tags on this event store message.
 func (es *EventStore) SetTags(tags map[string]string) *EventStore {
-	es.Tags = map[string]string{}
+	es.Tags = make(map[string]string, len(tags))
 	for key, value := range tags {
 		es.Tags[key] = value
 	}
 	return es
 }
 
-// AddTag - add key value tags to event store message
+// AddTag adds a single key-value tag to this event store message.
 func (es *EventStore) AddTag(key, value string) *EventStore {
 	if es.Tags == nil {
 		es.Tags = map[string]string{}
@@ -70,20 +69,23 @@ func (es *EventStore) AddTag(key, value string) *EventStore {
 	return es
 }
 
-// Send - sending events store message
-func (es *EventStore) Send(ctx context.Context) (*EventStoreResult, error) {
-	if es.transport == nil {
-		return nil, ErrNoTransportDefined
-	}
-	return es.transport.SendEventStore(ctx, es)
+// Validate checks all required fields and constraints.
+// Called automatically before send operations; can also be called explicitly.
+func (es *EventStore) Validate() error {
+	return validateEventStore(es, nil)
 }
 
+// EventStoreResult contains the result of an event store send operation.
+// Immutable after construction. Safe to read from multiple goroutines.
 type EventStoreResult struct {
 	Id   string
 	Sent bool
 	Err  error
 }
 
+// EventStoreReceive is a received event store message delivered to subscription
+// callbacks. It is safe to read from multiple goroutines but must not be
+// modified after receipt.
 type EventStoreReceive struct {
 	Id        string
 	Sequence  uint64
@@ -95,17 +97,19 @@ type EventStoreReceive struct {
 	Tags      map[string]string
 }
 
+// String returns a human-readable representation of the received event store message.
 func (es *EventStoreReceive) String() string {
-	return fmt.Sprintf("Id: %s, Sequence: %d, Timestamp: %s, Channel: %s, Metadata: %s, Body: %s, ClientId: %s, Tags: %s", es.Id, es.Sequence, es.Timestamp.String(), es.Channel, es.Metadata, es.Body, es.ClientId, es.Tags)
-
+	return fmt.Sprintf("Id: %s, Sequence: %d, Timestamp: %s, Channel: %s, Metadata: %s, Body: %s, ClientId: %s, Tags: %s",
+		es.Id, es.Sequence, es.Timestamp.String(), es.Channel, es.Metadata, es.Body, es.ClientId, es.Tags)
 }
 
+// SubscriptionOption configures event store subscription start position.
 type SubscriptionOption interface {
 	apply(*subscriptionOption)
 }
 
 type subscriptionOption struct {
-	kind  pb.Subscribe_EventsStoreType
+	kind  int32
 	value int64
 }
 
@@ -118,52 +122,66 @@ func (fo *funcSubscriptionOptions) apply(o *subscriptionOption) {
 }
 
 func newFuncSubscriptionOption(f func(*subscriptionOption)) *funcSubscriptionOptions {
-	return &funcSubscriptionOptions{
-		fn: f,
-	}
+	return &funcSubscriptionOptions{fn: f}
 }
 
-// StartFromNewEvents - start event store subscription with only new events
+const (
+	subscribeStartNewOnly     int32 = 1
+	subscribeStartFromFirst   int32 = 2
+	subscribeStartFromLast    int32 = 3
+	subscribeStartAtSequence  int32 = 4
+	subscribeStartAtTime      int32 = 5
+	subscribeStartAtTimeDelta int32 = 6
+)
+
+// StartFromNewEvents starts the subscription with only new events.
 func StartFromNewEvents() SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.Subscribe_StartNewOnly
+		o.kind = subscribeStartNewOnly
 	})
 }
 
-// StartFromFirstEvent - replay all the stored events from the first available sequence and continue stream new events from this point
+// StartFromFirstEvent replays all stored events from the beginning.
 func StartFromFirstEvent() SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.Subscribe_StartFromFirst
+		o.kind = subscribeStartFromFirst
 	})
 }
 
-// StartFromLastEvent - replay last event and continue stream new events from this point
+// StartFromLastEvent replays the last event and continues with new ones.
 func StartFromLastEvent() SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.Subscribe_StartFromLast
+		o.kind = subscribeStartFromLast
 	})
 }
 
-// StartFromSequence - replay events from specific event sequence number and continue stream new events from this point
+// StartFromSequence replays events starting at a specific sequence number.
 func StartFromSequence(sequence int) SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.Subscribe_StartAtSequence
+		o.kind = subscribeStartAtSequence
 		o.value = int64(sequence)
 	})
 }
 
-// StartFromTime - replay events from specific time continue stream new events from this point
+// StartFromTime replays events from a specific point in time.
 func StartFromTime(since time.Time) SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.Subscribe_StartAtTime
+		o.kind = subscribeStartAtTime
 		o.value = since.UnixNano()
 	})
 }
 
-// StartFromTimeDelta - replay events from specific current time - delta duration in seconds, continue stream new events from this point
+// StartFromTimeDelta replays events from now minus the specified duration.
 func StartFromTimeDelta(delta time.Duration) SubscriptionOption {
 	return newFuncSubscriptionOption(func(o *subscriptionOption) {
-		o.kind = pb.Subscribe_StartAtTimeDelta
+		o.kind = subscribeStartAtTimeDelta
 		o.value = int64(delta.Seconds())
 	})
+}
+
+// subscriptionParamsFromOption extracts (kind, value) for transport SubscribeRequest.
+func subscriptionParamsFromOption(opt SubscriptionOption) (kind int32, value int64) {
+	o := &subscriptionOption{}
+	opt.apply(o)
+	return o.kind, o.value
 }

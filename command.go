@@ -1,73 +1,73 @@
 package kubemq
 
 import (
-	"context"
 	"fmt"
 	"time"
 )
 
+// Command is an outbound command request. It is NOT safe for concurrent use —
+// create a new Command for each send operation.
 type Command struct {
-	Id        string
-	Channel   string
-	Metadata  string
-	Body      []byte
-	Timeout   time.Duration
-	ClientId  string
-	Tags      map[string]string
-	transport Transport
-	trace     *Trace
+	Id       string
+	Channel  string
+	Metadata string
+	Body     []byte
+	Timeout  time.Duration
+	ClientId string
+	Tags     map[string]string
 }
 
+// NewCommand creates an empty Command.
 func NewCommand() *Command {
 	return &Command{}
 }
 
-// SetId - set command requestId, otherwise new random uuid will be set
+// SetId sets the command request ID.
 func (c *Command) SetId(id string) *Command {
 	c.Id = id
 	return c
 }
 
-// SetClientId - set command ClientId - mandatory if default client was not set
+// SetClientId sets the client identifier for this command.
 func (c *Command) SetClientId(clientId string) *Command {
 	c.ClientId = clientId
 	return c
 }
 
-// SetChannel - set command channel - mandatory if default channel was not set
+// SetChannel sets the target channel for this command.
 func (c *Command) SetChannel(channel string) *Command {
 	c.Channel = channel
 	return c
 }
 
-// SetMetadata - set command metadata - mandatory if body field is empty
+// SetMetadata sets the command metadata.
 func (c *Command) SetMetadata(metadata string) *Command {
 	c.Metadata = metadata
 	return c
 }
 
-// SetBody - set command body - mandatory if metadata field is empty
+// SetBody sets the command body payload.
 func (c *Command) SetBody(body []byte) *Command {
 	c.Body = body
 	return c
 }
 
-// SetTimeout - set timeout for command to be returned. if timeout expired , send command will result with an error
+// SetTimeout sets the timeout for waiting for a command response.
 func (c *Command) SetTimeout(timeout time.Duration) *Command {
 	c.Timeout = timeout
 	return c
 }
 
-// SetTags - set key value tags to command message
+// SetTags replaces all tags on this command.
 func (c *Command) SetTags(tags map[string]string) *Command {
-	c.Tags = map[string]string{}
+	c.Tags = make(map[string]string, len(tags))
 	for key, value := range tags {
 		c.Tags[key] = value
 	}
 	return c
 }
 
-// AddTag - add key value tags to command message
+// AddTag adds a single key-value tag to this command.
 func (c *Command) AddTag(key, value string) *Command {
 	if c.Tags == nil {
 		c.Tags = map[string]string{}
@@ -76,20 +76,15 @@ func (c *Command) AddTag(key, value string) *Command {
 	return c
 }
 
-// AddTrace - add tracing support to command
-func (c *Command) AddTrace(name string) *Trace {
-	c.trace = CreateTrace(name)
-	return c.trace
+// Validate checks all required fields and constraints.
+// Called automatically before send operations; can also be called explicitly.
+func (c *Command) Validate() error {
+	return validateCommand(c, nil)
 }
 
-// Send - sending command , waiting for response or timeout
-func (c *Command) Send(ctx context.Context) (*CommandResponse, error) {
-	if c.transport == nil {
-		return nil, ErrNoTransportDefined
-	}
-	return c.transport.SendCommand(ctx, c)
-}
-
+// CommandReceive is a received command request delivered to subscription
+// callbacks. It is safe to read from multiple goroutines but must not be
+// modified after receipt.
 type CommandReceive struct {
 	Id         string
 	ClientId   string
@@ -100,10 +95,14 @@ type CommandReceive struct {
 	Tags       map[string]string
 }
 
+// String returns a human-readable representation of the received command.
 func (cr *CommandReceive) String() string {
-	return fmt.Sprintf("Id: %s, ClientId: %s, Channel: %s, Metadata: %s, Body: %s, ResponseTo: %s, Tags: %v", cr.Id, cr.ClientId, cr.Channel, cr.Metadata, string(cr.Body), cr.ResponseTo, cr.Tags)
+	return fmt.Sprintf("Id: %s, ClientId: %s, Channel: %s, Metadata: %s, Body: %s, ResponseTo: %s, Tags: %v",
+		cr.Id, cr.ClientId, cr.Channel, cr.Metadata, string(cr.Body), cr.ResponseTo, cr.Tags)
 }
 
+// CommandResponse contains the result of a command execution.
+// Immutable after construction. Safe to read from multiple goroutines.
 type CommandResponse struct {
 	CommandId        string
 	ResponseClientId string
@@ -113,6 +112,8 @@ type CommandResponse struct {
 	Tags             map[string]string
 }
 
+// String returns a human-readable representation of the command response.
 func (cr *CommandResponse) String() string {
-	return fmt.Sprintf("CommandId: %s, ResponseClientId: %s, Executed: %v, ExecutedAt: %s, Error: %s, Tags: %v", cr.CommandId, cr.ResponseClientId, cr.Executed, cr.ExecutedAt.String(), cr.Error, cr.Tags)
+	return fmt.Sprintf("CommandId: %s, ResponseClientId: %s, Executed: %v, ExecutedAt: %s, Error: %s, Tags: %v",
+		cr.CommandId, cr.ResponseClientId, cr.Executed, cr.ExecutedAt.String(), cr.Error, cr.Tags)
 }

@@ -1,0 +1,23 @@
+# codecov.yml — Codecov configuration
+# Owned by: 04-testing-spec.md (REQ-TEST-5)
+
+coverage:
+  status:
+    project:
+      default:
+        target: 40%
+        threshold: 2%
+    patch:
+      default:
+        target: 60%
+
+ignore:
+  - "**/*.pb.go"
+  - "**/*_gen.go"
+  - "vendor/**"
+  - "examples/**"
+  - "cookbook/**"
+
+comment:
+  layout: "diff, flags, files"
+  behavior: default

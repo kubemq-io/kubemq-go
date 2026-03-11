@@ -1,69 +1,69 @@
 package kubemq
 
 import (
-	"context"
 	"fmt"
 	"time"
 )
 
+// Query is an outbound query request. It is NOT safe for concurrent use —
+// create a new Query for each send operation.
 type Query struct {
-	Id        string
-	Channel   string
-	Metadata  string
-	Body      []byte
-	Timeout   time.Duration
-	ClientId  string
-	CacheKey  string
-	CacheTTL  time.Duration
-	Tags      map[string]string
-	transport Transport
-	trace     *Trace
+	Id       string
+	Channel  string
+	Metadata string
+	Body     []byte
+	Timeout  time.Duration
+	ClientId string
+	CacheKey string
+	CacheTTL time.Duration
+	Tags     map[string]string
 }
 
+// NewQuery creates an empty Query.
 func NewQuery() *Query {
 	return &Query{}
 }
 
-// SetId - set query requestId, otherwise new random uuid will be set
+// SetId sets the query request ID.
 func (q *Query) SetId(id string) *Query {
 	q.Id = id
 	return q
 }
 
-// SetClientId - set query ClientId - mandatory if default client was not set
+// SetClientId sets the client identifier for this query.
 func (q *Query) SetClientId(clientId string) *Query {
 	q.ClientId = clientId
 	return q
 }
 
-// SetChannel - set query channel - mandatory if default channel was not set
+// SetChannel sets the target channel for this query.
 func (q *Query) SetChannel(channel string) *Query {
 	q.Channel = channel
 	return q
 }
 
-// SetMetadata - set query metadata - mandatory if body field is empty
+// SetMetadata sets the query metadata.
 func (q *Query) SetMetadata(metadata string) *Query {
 	q.Metadata = metadata
 	return q
 }
 
-// SetBody - set query body - mandatory if metadata field is empty
+// SetBody sets the query body payload.
 func (q *Query) SetBody(body []byte) *Query {
 	q.Body = body
 	return q
 }
 
-// SetTags - set key value tags to query message
+// SetTags replaces all tags on this query.
 func (q *Query) SetTags(tags map[string]string) *Query {
-	q.Tags = map[string]string{}
+	q.Tags = make(map[string]string, len(tags))
 	for key, value := range tags {
 		q.Tags[key] = value
 	}
 	return q
 }
 
-// AddTag - add key value tags to query message
+// AddTag adds a single key-value tag to this query.
 func (q *Query) AddTag(key, value string) *Query {
 	if q.Tags == nil {
 		q.Tags = map[string]string{}
@@ -72,38 +72,33 @@ func (q *Query) AddTag(key, value string) *Query {
 	return q
 }
 
-// SetTimeout - set timeout for query to be returned. if timeout expired , send query will result with an error
+// SetTimeout sets the timeout for waiting for a query response.
 func (q *Query) SetTimeout(timeout time.Duration) *Query {
 	q.Timeout = timeout
 	return q
 }
 
-// SetCacheKey - set cache key to retrieve already stored query response, otherwise the response for this query will be stored in cache for future query requests
+// SetCacheKey sets the cache key for this query response.
 func (q *Query) SetCacheKey(cacheKey string) *Query {
 	q.CacheKey = cacheKey
 	return q
 }
 
-// SetCacheTTL - set cache time to live for the this query cache key response to be retrieved already stored query response, if not set default cacheTTL will be set
+// SetCacheTTL sets the cache time-to-live for this query response.
 func (q *Query) SetCacheTTL(ttl time.Duration) *Query {
 	q.CacheTTL = ttl
 	return q
 }
 
-// Send - sending query request , waiting for response or timeout
-func (q *Query) Send(ctx context.Context) (*QueryResponse, error) {
-	if q.transport == nil {
-		return nil, ErrNoTransportDefined
-	}
-	return q.transport.SendQuery(ctx, q)
+// Validate checks all required fields and constraints.
+// Called automatically before send operations; can also be called explicitly.
+func (q *Query) Validate() error {
+	return validateQuery(q, nil)
 }
 
-// AddTrace - add tracing support to query
-func (q *Query) AddTrace(name string) *Trace {
-	q.trace = CreateTrace(name)
-	return q.trace
-}
-
+// QueryReceive is a received query request delivered to subscription
+// callbacks. It is safe to read from multiple goroutines but must not be
+// modified after receipt.
 type QueryReceive struct {
 	Id         string
 	Channel    string
@@ -114,10 +109,14 @@ type QueryReceive struct {
 	Tags       map[string]string
 }
 
+// String returns a human-readable representation of the received query.
 func (qr *QueryReceive) String() string {
-	return fmt.Sprintf("Id: %s, ClientId: %s, Channel: %s, Metadata: %s, Body: %s, ResponseTo: %s, Tags: %v", qr.Id, qr.ClientId, qr.Channel, qr.Metadata, string(qr.Body), qr.ResponseTo, qr.Tags)
+	return fmt.Sprintf("Id: %s, ClientId: %s, Channel: %s, Metadata: %s, Body: %s, ResponseTo: %s, Tags: %v",
+		qr.Id, qr.ClientId, qr.Channel, qr.Metadata, string(qr.Body), qr.ResponseTo, qr.Tags)
 }
 
+// QueryResponse contains the result of a query execution.
+// Immutable after construction. Safe to read from multiple goroutines.
 type QueryResponse struct {
 	QueryId          string
 	Executed         bool
@@ -130,6 +129,8 @@ type QueryResponse struct {
 	Tags             map[string]string
 }
 
+// String returns a human-readable representation of the query response.
 func (qr *QueryResponse) String() string {
-	return fmt.Sprintf("QueryId: %s, Executed: %v, ExecutedAt: %s, Metadata: %s, ResponseClientId: %s, Body: %s, CacheHit: %v, Error: %s, Tags: %v", qr.QueryId, qr.Executed, qr.ExecutedAt.String(), qr.Metadata, qr.ResponseClientId, string(qr.Body), qr.CacheHit, qr.Error, qr.Tags)
+	return fmt.Sprintf("QueryId: %s, Executed: %v, ExecutedAt: %s, Metadata: %s, ResponseClientId: %s, Body: %s, CacheHit: %v, Error: %s, Tags: %v",
+		qr.QueryId, qr.Executed, qr.ExecutedAt.String(), qr.Metadata, qr.ResponseClientId, string(qr.Body), qr.CacheHit, qr.Error, qr.Tags)
 }

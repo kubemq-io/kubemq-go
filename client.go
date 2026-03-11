@@ -2,66 +2,163 @@ package kubemq
 
 import (
 	"context"
-	"errors"
-	pb "github.com/kubemq-io/protobuf/go"
 	"time"
+
+	"github.com/kubemq-io/kubemq-go/v2/internal/middleware"
+	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
+	"github.com/kubemq-io/kubemq-go/v2/pkg/uuid"
 )
 
 const (
 	defaultRequestTimeout = time.Second * 5
 )
 
-var (
-	ErrNoTransportDefined    = errors.New("no transport layer defined, create object with client instance")
-	ErrNoTransportConnection = errors.New("no transport layer established, aborting")
-)
-
-type ServerInfo struct {
-	Host                string
-	Version             string
-	ServerStartTime     int64
-	ServerUpTimeSeconds int64
-}
-
+// Client is safe for concurrent use by multiple goroutines. A single Client
+// instance uses one gRPC connection for all operations. Create one Client and
+// share it across goroutines — do not create a Client per goroutine or per
+// operation.
+//
+// All methods on Client are goroutine-safe. The underlying connection multiplexes
+// concurrent operations over a single gRPC channel (HTTP/2 stream multiplexing).
+//
+// Example:
+//
+//	client, err := kubemq.NewClient(ctx, kubemq.WithAddress("localhost", 50000))
+//	if err != nil { log.Fatal(err) }
+//	defer client.Close()
+//
+//	// Share client across goroutines
+//	for i := 0; i < 10; i++ {
+//	    go func() {
+//	        _ = client.SendEvent(ctx, event)
+//	    }()
+//	}
 type Client struct {
-	opts                   *Options
-	transport              Transport
-	ServerInfo             *ServerInfo
-	singleStreamQueueMutex chan bool
-	//	currentSQM *StreamQueueMessage
+	opts      *Options
+	transport transport.Transport
+	otel      *middleware.OTelInterceptor
 }
 
-// NewClient - create client instance to be use to communicate with KubeMQ server
+// NewClient creates a KubeMQ client with production-ready defaults.
+// This is the canonical constructor per TYPE-REGISTRY.md.
+//
+// The server address is provided via WithAddress(host, port).
+// For local development, the default is localhost:50000.
+//
+// Default configuration (override with Option functions):
+//   - address: localhost:50000
+//   - clientId: auto-generated UUID
+//   - autoReconnect: enabled (ReconnectPolicy with unlimited attempts)
+//   - connectionTimeout: 10s
+//   - keepalive: enabled (10s interval, 5s timeout)
+//   - retryPolicy: 3 retries with exponential backoff
+//   - waitForReady: true
+//
+// Example:
+//
+//	client, err := kubemq.NewClient(ctx,
+//	    kubemq.WithAddress("localhost", 50000),
+//	)
+//	if err != nil { log.Fatal(err) }
+//	defer client.Close()
 func NewClient(ctx context.Context, op ...Option) (*Client, error) {
 	opts := GetDefaultOptions()
 	for _, o := range op {
 		o.apply(opts)
 	}
-	client := &Client{
-		opts: opts,
+
+	if opts.clientId == "" {
+		opts.clientId = uuid.New()
 	}
 
-	err := opts.Validate()
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
+	otelInt := middleware.NewOTelInterceptor(
+		opts.tracerProvider,
+		opts.meterProvider,
+		opts.logger,
+		opts.host,
+		opts.port,
+		middleware.CardinalityConfig{
+			Threshold: opts.cardinalityThreshold,
+			Allowlist: opts.cardinalityAllowlist,
+		},
+		Version,
+	)
+
+	t, err := transport.NewGRPC(ctx, transport.Config{
+		Host:                         opts.host,
+		Port:                         opts.port,
+		IsSecured:                    opts.isSecured,
+		CertFile:                     opts.certFile,
+		CertData:                     opts.certData,
+		ServerOverrideDomain:         opts.serverOverrideDomain,
+		AuthToken:                    opts.authToken,
+		ClientID:                     opts.clientId,
+		MaxSendSize:                  opts.maxSendMsgSize,
+		MaxReceiveSize:               opts.maxRecvMsgSize,
+		RetryPolicy:                  opts.retryPolicy,
+		Logger:                       opts.logger,
+		MaxConcurrentRetries:         opts.maxConcurrentRetries,
+		ReconnectPolicy:              opts.reconnectPolicy,
+		ConnectionTimeout:            opts.connectionTimeout,
+		KeepaliveTime:                opts.keepaliveTime,
+		KeepaliveTimeout:             opts.keepaliveTimeout,
+		PermitKeepaliveWithoutStream: opts.permitKeepaliveWithoutStream,
+		DrainTimeout:                 opts.drainTimeout,
+		WaitForReady:                 opts.waitForReady,
+		CheckConnection:              opts.checkConnection,
+		CredentialProvider:           opts.credentialProvider,
+		TLSConfig:                    opts.tlsConfig,
+		InsecureSkipVerify:           opts.insecureSkipVerify,
+		MaxConcurrentCallbacks:       opts.callbackConfig.MaxConcurrent,
+		CallbackTimeout:              opts.callbackConfig.Timeout,
+		ReceiveBufferSize:            opts.receiveBufferSize,
+		OnConnected:                  opts.stateCallbacks.OnConnected,
+		OnDisconnected:               opts.stateCallbacks.OnDisconnected,
+		OnReconnecting:               opts.stateCallbacks.OnReconnecting,
+		OnReconnected:                opts.stateCallbacks.OnReconnected,
+		OnClosed:                     opts.stateCallbacks.OnClosed,
+		OnBufferDrain:                opts.onBufferDrain,
+	})
 	if err != nil {
 		return nil, err
 	}
-	switch opts.transportType {
-	case TransportTypeGRPC:
-		client.transport, client.ServerInfo, err = newGRPCTransport(ctx, opts)
-	case TransportTypeRest:
-		client.transport, client.ServerInfo, err = newRestTransport(ctx, opts)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if client.transport == nil {
-		return nil, ErrNoTransportConnection
-	}
-	client.singleStreamQueueMutex = make(chan bool, 1)
-	return client, nil
+
+	return &Client{
+		opts:      opts,
+		transport: t,
+		otel:      otelInt,
+	}, nil
 }
 
-// Close - closing client connection. any on going transactions will be aborted
+// State returns the current connection state. Thread-safe.
+func (c *Client) State() ConnectionState {
+	return c.transport.State()
+}
+
+// checkClosed returns ErrClientClosed if the client has been closed.
+func (c *Client) checkClosed() error {
+	if c.transport.State() == StateClosed {
+		return ErrClientClosed
+	}
+	return nil
+}
+
+// defaultErrorHandler logs unhandled subscription errors at ERROR level.
+func (c *Client) defaultErrorHandler(err error) {
+	if c.opts.logger != nil {
+		c.opts.logger.Error("unhandled subscription error", "error", err)
+	}
+}
+
+// Close closes the client connection gracefully. In-flight operations are
+// drained with a configurable timeout (default 5s), then in-flight subscription
+// callbacks are drained with a separate timeout (default 30s). After Close
+// returns, all methods return ErrClientClosed. Close is idempotent and safe
+// to call concurrently from multiple goroutines.
 func (c *Client) Close() error {
 	if c.transport != nil {
 		return c.transport.Close()
@@ -69,334 +166,19 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// NewEvent - create an empty event
-func (c *Client) NewEvent() *Event {
-	return c.E()
-}
-
-// E - create an empty event object
-func (c *Client) E() *Event {
-	return &Event{
-		Id:        "",
-		Channel:   c.opts.defaultChannel,
-		Metadata:  "",
-		Body:      nil,
-		ClientId:  c.opts.clientId,
-		Tags:      map[string]string{},
-		transport: c.transport,
-	}
-}
-
-// NewEventStore- create an empty event store
-func (c *Client) NewEventStore() *EventStore {
-	return c.ES()
-}
-
-// ES - create an empty event store object
-func (c *Client) ES() *EventStore {
-	return &EventStore{
-		Id:        "",
-		Channel:   c.opts.defaultChannel,
-		Metadata:  "",
-		Body:      nil,
-		ClientId:  c.opts.clientId,
-		Tags:      map[string]string{},
-		transport: c.transport,
-	}
-}
-
-// StreamEvents - send stream of events in a single call
-func (c *Client) StreamEvents(ctx context.Context, eventsCh chan *Event, errCh chan error) {
-	c.transport.StreamEvents(ctx, eventsCh, errCh)
-}
-
-// StreamEventsStore - send stream of events store in a single call
-func (c *Client) StreamEventsStore(ctx context.Context, eventsCh chan *EventStore, eventsResultCh chan *EventStoreResult, errCh chan error) {
-	c.transport.StreamEventsStore(ctx, eventsCh, eventsResultCh, errCh)
-}
-
-// NewCommand - create an empty command
-func (c *Client) NewCommand() *Command {
-	return c.C()
-}
-
-// C - create an empty command object
-func (c *Client) C() *Command {
-	return &Command{
-		Id:        "",
-		Channel:   c.opts.defaultChannel,
-		Metadata:  "",
-		Body:      nil,
-		Timeout:   defaultRequestTimeout,
-		ClientId:  c.opts.clientId,
-		Tags:      map[string]string{},
-		transport: c.transport,
-		trace:     nil,
-	}
-}
-
-// NewQuery - create an empty query
-func (c *Client) NewQuery() *Query {
-	return c.Q()
-}
-
-// Q - create an empty query object
-func (c *Client) Q() *Query {
-	return &Query{
-		Id:        "",
-		Channel:   c.opts.defaultChannel,
-		Metadata:  "",
-		Body:      nil,
-		Timeout:   defaultRequestTimeout,
-		ClientId:  c.opts.clientId,
-		CacheKey:  "",
-		CacheTTL:  c.opts.defaultCacheTTL,
-		Tags:      map[string]string{},
-		transport: c.transport,
-		trace:     nil,
-	}
-}
-
-// NewResponse - create an empty response
-func (c *Client) NewResponse() *Response {
-	return c.R()
-}
-
-// R - create an empty response object for command or query responses
-func (c *Client) R() *Response {
-	return &Response{
-		RequestId:  "",
-		ResponseTo: "",
-		Metadata:   "",
-		Body:       nil,
-		ClientId:   c.opts.clientId,
-		ExecutedAt: time.Time{},
-		Err:        nil,
-		Tags:       map[string]string{},
-		transport:  c.transport,
-		trace:      nil,
-	}
-}
-
-// SubscribeToEvents - subscribe to events by channel and group. return channel of events or en error
-func (c *Client) SubscribeToEvents(ctx context.Context, channel, group string, errCh chan error) (<-chan *Event, error) {
-	return c.transport.SubscribeToEvents(ctx, &EventsSubscription{
-		Channel:  channel,
-		Group:    group,
-		ClientId: c.opts.clientId,
-	}, errCh)
-}
-
-// SubscribeToEvents - subscribe to events by channel and group. return channel of events or en error
-func (c *Client) SubscribeToEventsWithRequest(ctx context.Context, request *EventsSubscription, errCh chan error) (<-chan *Event, error) {
-	return c.transport.SubscribeToEvents(ctx, request, errCh)
-}
-
-// SubscribeToEventsStore - subscribe to events store by channel and group with subscription option. return channel of events or en error
-func (c *Client) SubscribeToEventsStore(ctx context.Context, channel, group string, errCh chan error, opt SubscriptionOption) (<-chan *EventStoreReceive, error) {
-	return c.transport.SubscribeToEventsStore(ctx, &EventsStoreSubscription{
-		Channel:          channel,
-		Group:            group,
-		ClientId:         c.opts.clientId,
-		SubscriptionType: opt,
-	}, errCh)
-}
-
-// SubscribeToEventsStoreWithRequest - subscribe to events store by channel and group with subscription option. return channel of events or en error
-func (c *Client) SubscribeToEventsStoreWithRequest(ctx context.Context, request *EventsStoreSubscription, errCh chan error) (<-chan *EventStoreReceive, error) {
-	return c.transport.SubscribeToEventsStore(ctx, request, errCh)
-}
-
-// SubscribeToCommands - subscribe to commands requests by channel and group. return channel of CommandReceived or en error
-func (c *Client) SubscribeToCommands(ctx context.Context, channel, group string, errCh chan error) (<-chan *CommandReceive, error) {
-	return c.transport.SubscribeToCommands(ctx, &CommandsSubscription{
-		Channel:  channel,
-		Group:    group,
-		ClientId: c.opts.clientId,
-	}, errCh)
-}
-
-// SubscribeToCommands - subscribe to commands requests by channel and group. return channel of CommandReceived or en error
-func (c *Client) SubscribeToCommandsWithRequest(ctx context.Context, request *CommandsSubscription, errCh chan error) (<-chan *CommandReceive, error) {
-	return c.transport.SubscribeToCommands(ctx, request, errCh)
-}
-
-// SubscribeToQueries - subscribe to queries requests by channel and group. return channel of QueryReceived or en error
-func (c *Client) SubscribeToQueriesWithRequest(ctx context.Context, request *QueriesSubscription, errCh chan error) (<-chan *QueryReceive, error) {
-	return c.transport.SubscribeToQueries(ctx, request, errCh)
-}
-
-// SubscribeToQueries - subscribe to queries requests by channel and group. return channel of QueryReceived or en error
-func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, errCh chan error) (<-chan *QueryReceive, error) {
-	return c.transport.SubscribeToQueries(ctx, &QueriesSubscription{
-		Channel:  channel,
-		Group:    group,
-		ClientId: c.opts.clientId,
-	}, errCh)
-}
-
-// NewQueueMessage - create an empty queue messages
-func (c *Client) NewQueueMessage() *QueueMessage {
-	return c.QM()
-}
-
-// QM - create an empty queue message object
-func (c *Client) QM() *QueueMessage {
-	return &QueueMessage{
-		QueueMessage: &pb.QueueMessage{
-			MessageID:  "",
-			ClientID:   c.opts.clientId,
-			Channel:    "",
-			Metadata:   "",
-			Body:       nil,
-			Tags:       map[string]string{},
-			Attributes: nil,
-			Policy: &pb.QueueMessagePolicy{
-				ExpirationSeconds: 0,
-				DelaySeconds:      0,
-				MaxReceiveCount:   0,
-				MaxReceiveQueue:   "",
-			},
-		},
-
-		transport: c.transport,
-		trace:     nil,
-	}
-}
-
-// NewQueueMessages - create an empty queue messages array
-func (c *Client) NewQueueMessages() *QueueMessages {
-	return c.QMB()
-}
-
-// QMB - create an empty queue message array object
-func (c *Client) QMB() *QueueMessages {
-	return &QueueMessages{
-		Messages:  []*QueueMessage{},
-		transport: c.transport,
-	}
-}
-
-// SendQueueMessage - send single queue message
-func (c *Client) SendQueueMessage(ctx context.Context, msg *QueueMessage) (*SendQueueMessageResult, error) {
-	return c.transport.SendQueueMessage(ctx, msg)
-}
-
-// SendQueueMessages - send multiple queue messages
-func (c *Client) SendQueueMessages(ctx context.Context, msg []*QueueMessage) ([]*SendQueueMessageResult, error) {
-	return c.transport.SendQueueMessages(ctx, msg)
-}
-
-// NewReceiveQueueMessagesRequest - create an empty receive queue message request object
-func (c *Client) NewReceiveQueueMessagesRequest() *ReceiveQueueMessagesRequest {
-	return c.RQM()
-}
-
-// RQM - create an empty receive queue message request object
-func (c *Client) RQM() *ReceiveQueueMessagesRequest {
-	return &ReceiveQueueMessagesRequest{
-		RequestID:           "",
-		ClientID:            c.opts.clientId,
-		Channel:             "",
-		MaxNumberOfMessages: 0,
-		WaitTimeSeconds:     0,
-		IsPeak:              false,
-		transport:           c.transport,
-		trace:               nil,
-	}
-}
-
-// ReceiveQueueMessages - call to receive messages from a queue
-func (c *Client) ReceiveQueueMessages(ctx context.Context, req *ReceiveQueueMessagesRequest) (*ReceiveQueueMessagesResponse, error) {
-	return c.transport.ReceiveQueueMessages(ctx, req)
-}
-
-// NewAckAllQueueMessagesRequest - create an empty ack all receive queue messages request object
-func (c *Client) NewAckAllQueueMessagesRequest() *AckAllQueueMessagesRequest {
-	return c.AQM()
-}
-
-// AQM - create an empty ack all receive queue messages request object
-func (c *Client) AQM() *AckAllQueueMessagesRequest {
-	return &AckAllQueueMessagesRequest{
-		RequestID:       "",
-		ClientID:        c.opts.clientId,
-		Channel:         "",
-		WaitTimeSeconds: 0,
-		transport:       c.transport,
-		trace:           nil,
-	}
-}
-
-// AckAllQueueMessages - send ack all messages in queue
-func (c *Client) AckAllQueueMessages(ctx context.Context, req *AckAllQueueMessagesRequest) (*AckAllQueueMessagesResponse, error) {
-	return c.transport.AckAllQueueMessages(ctx, req)
-}
-
-// NewStreamQueueMessage - create an empty stream receive queue message object
-func (c *Client) NewStreamQueueMessage() *StreamQueueMessage {
-	return c.SQM()
-}
-
-// QueuesInfo - get queues detailed information
-func (c *Client) QueuesInfo(ctx context.Context, filter string) (*QueuesInfo, error) {
-	return c.transport.QueuesInfo(ctx, filter)
-}
-
-// SQM - create an empty stream receive queue message object
-func (c *Client) SQM() *StreamQueueMessage {
-
-	c.singleStreamQueueMutex <- true
-	sqm := &StreamQueueMessage{
-		RequestID:         "",
-		ClientID:          c.opts.clientId,
-		Channel:           "",
-		visibilitySeconds: 0,
-		waitTimeSeconds:   0,
-		refSequence:       0,
-		reqCh:             nil,
-		resCh:             nil,
-		errCh:             nil,
-		doneCh:            nil,
-		msg:               nil,
-		transport:         c.transport,
-		trace:             nil,
-		ctx:               nil,
-		releaseCh:         c.singleStreamQueueMutex,
-	}
-	return sqm
-}
-
-// Ping - get status of current connection
+// Ping checks connectivity with the KubeMQ server and returns server info.
 func (c *Client) Ping(ctx context.Context) (*ServerInfo, error) {
-	return c.transport.Ping(ctx)
-}
-
-func (c *Client) SetQueueMessage(qm *QueueMessage) *QueueMessage {
-	qm.transport = c.transport
-	qm.trace = nil
-	return qm
-}
-func (c *Client) SetEvent(e *Event) *Event {
-	e.transport = c.transport
-	return e
-}
-func (c *Client) SetEventStore(es *EventStore) *EventStore {
-	es.transport = c.transport
-	return es
-}
-
-func (c *Client) SetCommand(cmd *Command) *Command {
-	cmd.transport = c.transport
-	return cmd
-}
-
-func (c *Client) SetQuery(query *Query) *Query {
-	query.transport = c.transport
-	return query
-}
-
-func (c *Client) SetResponse(response *Response) *Response {
-	response.transport = c.transport
-	return response
+	if err := c.checkClosed(); err != nil {
+		return nil, err
+	}
+	result, err := c.transport.Ping(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &ServerInfo{
+		Host:                result.Host,
+		Version:             result.Version,
+		ServerStartTime:     result.ServerStartTime,
+		ServerUpTimeSeconds: result.ServerUpTimeSeconds,
+	}, nil
 }
