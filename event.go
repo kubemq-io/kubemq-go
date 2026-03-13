@@ -79,10 +79,9 @@ func (e *Event) String() string {
 		e.Id, e.Channel, e.Metadata, e.Body, e.ClientId, e.Tags)
 }
 
-// EventResult contains the result of an event send operation.
-// Immutable after construction. Safe to read from multiple goroutines.
-type EventResult struct {
-	Id   string
-	Sent bool
-	Err  error
+// EventStreamResult represents a server acknowledgement for a streamed event.
+type EventStreamResult struct {
+	EventID string
+	Sent    bool
+	Error   string
 }

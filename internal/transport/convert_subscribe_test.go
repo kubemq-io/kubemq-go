@@ -46,6 +46,10 @@ func TestEventStoreReceiveFromProto(t *testing.T) {
 	assert.Equal(t, int64(1234567890), item.Timestamp)
 }
 
+func TestEventStoreReceiveFromProto_Nil(t *testing.T) {
+	assert.Nil(t, EventStoreReceiveFromProto(nil))
+}
+
 func TestCommandReceiveFromProto(t *testing.T) {
 	pbReq := &pb.Request{
 		RequestID:    "cmd-1",

@@ -58,13 +58,21 @@ type KubeMQError struct {
 
 func (e *KubeMQError) Error() string {
 	var b []byte
-	b = append(b, e.Operation...)
-	if e.Channel != "" {
-		b = append(b, " failed on channel \""...)
+	if e.Operation != "" {
+		b = append(b, e.Operation...)
+		if e.Channel != "" {
+			b = append(b, " failed on channel \""...)
+			b = append(b, e.Channel...)
+			b = append(b, '"')
+		} else {
+			b = append(b, " failed"...)
+		}
+	} else if e.Channel != "" {
+		b = append(b, "failed on channel \""...)
 		b = append(b, e.Channel...)
 		b = append(b, '"')
 	} else {
-		b = append(b, " failed"...)
+		b = append(b, "failed"...)
 	}
 	b = append(b, ": "...)
 	if e.Cause != nil {
@@ -171,7 +179,7 @@ func NewError(code ErrorCode, op, channel, requestID string, cause error) *KubeM
 func ClassifyGRPCCode(code codes.Code) (ErrorCategory, ErrorCode) {
 	switch code {
 	case codes.OK:
-		return CategoryTransient, ErrCodeTransient
+		return CategoryCancellation, ErrCodeCancellation
 	case codes.Canceled:
 		return CategoryCancellation, ErrCodeCancellation
 	case codes.Unknown:

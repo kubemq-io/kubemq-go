@@ -225,6 +225,26 @@ func TestStateMachineStateIncludedInLogs(t *testing.T) {
 	require.True(t, log.contains("connection state changed"))
 }
 
+func TestNoopLoggerMethods(t *testing.T) {
+	var l noopLogger
+	l.Info("test", "k", "v")
+	l.Warn("test", "k", "v")
+	l.Error("test", "k", "v")
+}
+
+func TestFireBufferDrain_PanicRecovery(t *testing.T) {
+	log := &testLogger{}
+	sm := newStateMachine(StateCallbacks{}, log, func(count int) {
+		panic("drain callback panic")
+	})
+
+	assert.NotPanics(t, func() {
+		sm.fireBufferDrain(10)
+		time.Sleep(100 * time.Millisecond)
+	})
+	assert.True(t, log.contains("OnBufferDrain callback panicked"))
+}
+
 func TestIsValidTransition(t *testing.T) {
 	tests := []struct {
 		from  types.ConnectionState

@@ -1,10 +1,7 @@
 package kubemq
 
 import (
-	"context"
 	"log/slog"
-
-	"go.opentelemetry.io/otel/trace"
 )
 
 // noopLogger discards all log output. This is the default Logger
@@ -55,17 +52,4 @@ func (a *SlogAdapter) Warn(msg string, keysAndValues ...any) {
 
 func (a *SlogAdapter) Error(msg string, keysAndValues ...any) {
 	a.logger.Error(msg, keysAndValues...)
-}
-
-// logWithTrace enriches keysAndValues with trace_id and span_id
-// extracted from the context, if an active span exists.
-func logWithTrace(ctx context.Context, keysAndValues []any) []any {
-	sc := trace.SpanContextFromContext(ctx)
-	if !sc.IsValid() {
-		return keysAndValues
-	}
-	return append(keysAndValues,
-		"trace_id", sc.TraceID().String(),
-		"span_id", sc.SpanID().String(),
-	)
 }

@@ -45,6 +45,7 @@ func (co *closeOnce) Do() bool {
 
 // inFlightTracker counts active operations for drain support.
 type inFlightTracker struct {
+	mu sync.RWMutex
 	wg sync.WaitGroup
 }
 
@@ -186,14 +187,12 @@ func (t *grpcTransport) State() types.ConnectionState {
 
 // enterOperation marks an operation as in-flight. Returns false if client is closed.
 func (t *grpcTransport) enterOperation() bool {
+	t.inFlight.mu.RLock()
+	defer t.inFlight.mu.RUnlock()
 	if t.closed.Load() {
 		return false
 	}
 	t.inFlight.wg.Add(1)
-	if t.closed.Load() {
-		t.inFlight.wg.Done()
-		return false
-	}
 	return true
 }
 
@@ -254,6 +253,8 @@ func (t *grpcTransport) Close() error {
 	}
 
 	t.closed.Store(true)
+	t.inFlight.mu.Lock()
+	t.inFlight.mu.Unlock()
 
 	t.reconnect.flushBuffer()
 
@@ -551,6 +552,60 @@ func (t *grpcTransport) SendEventStore(ctx context.Context, req *SendEventStoreR
 	return EventStoreResultFromProto(result), nil
 }
 
+// SendEventsStream opens a bidirectional stream for sending events (both regular and store).
+func (t *grpcTransport) SendEventsStream(ctx context.Context) (*EventStreamHandle, error) {
+	if !t.enterOperation() {
+		return nil, fmt.Errorf("kubemq: client closed")
+	}
+	defer t.exitOperation()
+
+	if err := t.checkReady(ctx); err != nil {
+		return nil, err
+	}
+
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	stream, err := t.getClient().SendEventsStream(streamCtx)
+	if err != nil {
+		streamCancel()
+		return nil, fmt.Errorf("send events stream: %w", err)
+	}
+
+	doneCh := make(chan struct{})
+	resultCh := make(chan *EventStreamResult, 16)
+	go func() {
+		defer close(doneCh)
+		defer close(resultCh)
+		for {
+			resp, err := stream.Recv()
+			if err != nil {
+				return
+			}
+			result := EventStreamResultFromProto(resp)
+			if result != nil {
+				select {
+				case resultCh <- result:
+				case <-streamCtx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	handle := &EventStreamHandle{
+		Results: resultCh,
+		Done:    doneCh,
+		SendFn: func(item *EventStreamItem) error {
+			pbEvent := EventStreamItemToProto(item, t.cfg.ClientID)
+			return stream.Send(pbEvent)
+		},
+		closeFn: func() {
+			_ = stream.CloseSend()
+			streamCancel()
+		},
+	}
+	return handle, nil
+}
+
 // SendCommand sends a command and waits for a response.
 func (t *grpcTransport) SendCommand(ctx context.Context, req *SendCommandRequest) (*SendCommandResult, error) {
 	if !t.enterOperation() {
@@ -717,7 +772,7 @@ func (t *grpcTransport) QueuesInfo(ctx context.Context, filter string) (*QueuesI
 	if err != nil {
 		return nil, fmt.Errorf("queues info failed: %w", err)
 	}
-	if result == nil {
+	if result == nil || result.Info == nil {
 		return &QueuesInfoResult{}, nil
 	}
 	out := &QueuesInfoResult{
@@ -1016,25 +1071,40 @@ func (t *grpcTransport) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle
 	}
 
 	doneCh := make(chan struct{})
+	resultCh := make(chan *QueueUpstreamResult, 16)
+	errCh := make(chan error, 1)
 	go func() {
 		defer close(doneCh)
+		defer close(resultCh)
 		for {
-			_, err := stream.Recv()
+			resp, err := stream.Recv()
 			if err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				return
+			}
+			result := QueueUpstreamResponseFromProto(resp)
+			select {
+			case resultCh <- result:
+			case <-streamCtx.Done():
 				return
 			}
 		}
 	}()
 
 	handle := &QueueUpstreamHandle{
-		Done: doneCh,
-		SendFn: func(msgs []*QueueMessageItem) error {
+		Done:    doneCh,
+		Results: resultCh,
+		Errors:  errCh,
+		SendFn: func(requestID string, msgs []*QueueMessageItem) error {
 			pbMsgs := make([]*pb.QueueMessage, 0, len(msgs))
 			for _, m := range msgs {
 				pbMsgs = append(pbMsgs, QueueMessageToProto(m, t.cfg.ClientID))
 			}
 			return stream.Send(&pb.QueuesUpstreamRequest{
-				RequestID: "",
+				RequestID: requestID,
 				Messages:  pbMsgs,
 			})
 		},
@@ -1079,6 +1149,13 @@ func (t *grpcTransport) QueueDownstream(ctx context.Context, req *QueueDownstrea
 				}
 				return
 			}
+			if pb.QueuesDownstreamRequestType(resp.RequestTypeData) == 11 {
+				select {
+				case <-streamCtx.Done():
+				case errCh <- fmt.Errorf("kubemq: server closed downstream stream"):
+				}
+				return
+			}
 			if resp.IsError {
 				select {
 				case <-streamCtx.Done():
@@ -1111,6 +1188,7 @@ func (t *grpcTransport) QueueDownstream(ctx context.Context, req *QueueDownstrea
 				ReQueueChannel:   r.ReQueueChannel,
 				SequenceRange:    r.SequenceRange,
 				RefTransactionId: r.RefTransactionID,
+				Metadata:         r.Metadata,
 			}
 			return stream.Send(pbReq)
 		},
@@ -1229,7 +1307,11 @@ func (t *grpcTransport) ListChannels(ctx context.Context, req *ListChannelsReque
 	if resp.Error != "" {
 		return nil, fmt.Errorf("list channels: %s", resp.Error)
 	}
-	return parseChannelList(resp.Body), nil
+	channels, err := parseChannelList(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("list channels: failed to parse response: %w", err)
+	}
+	return channels, nil
 }
 
 type channelListItem struct {
@@ -1250,13 +1332,13 @@ type channelStat struct {
 	Delayed   int64 `json:"delayed"`
 }
 
-func parseChannelList(data []byte) []*ChannelInfo {
+func parseChannelList(data []byte) ([]*ChannelInfo, error) {
 	if len(data) == 0 {
-		return nil
+		return nil, nil
 	}
 	var items []channelListItem
 	if err := json.Unmarshal(data, &items); err != nil {
-		return nil
+		return nil, fmt.Errorf("invalid channel list JSON: %w", err)
 	}
 	out := make([]*ChannelInfo, 0, len(items))
 	for _, item := range items {
@@ -1288,5 +1370,5 @@ func parseChannelList(data []byte) []*ChannelInfo {
 		}
 		out = append(out, ci)
 	}
-	return out
+	return out, nil
 }

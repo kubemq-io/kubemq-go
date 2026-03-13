@@ -372,7 +372,7 @@ func GetDefaultOptions() *Options {
 		checkConnection:              false,
 		reconnectPolicy:              types.DefaultReconnectPolicy(),
 		connectionTimeout:            10 * time.Second,
-		maxRecvMsgSize:               100 * 1024 * 1024,
+		maxRecvMsgSize:               4 * 1024 * 1024,
 		maxSendMsgSize:               100 * 1024 * 1024,
 		waitForReady:                 true,
 		keepaliveTime:                10 * time.Second,
@@ -404,6 +404,12 @@ func (o *Options) Validate() error {
 		return &KubeMQError{
 			Code:    ErrCodeValidation,
 			Message: "connection timeout must be positive",
+		}
+	}
+	if o.keepaliveTime > 0 && o.keepaliveTime < 5*time.Second {
+		return &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: "keepalive time must be >= 5s (server minimum ping interval)",
 		}
 	}
 	if o.maxRecvMsgSize <= 0 {

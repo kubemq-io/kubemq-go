@@ -9,18 +9,22 @@ import (
 )
 
 func TestParseChannelList_Empty(t *testing.T) {
-	result := parseChannelList(nil)
+	result, err := parseChannelList(nil)
+	require.NoError(t, err)
 	assert.Nil(t, result)
 }
 
 func TestParseChannelList_EmptyBytes(t *testing.T) {
-	result := parseChannelList([]byte{})
+	result, err := parseChannelList([]byte{})
+	require.NoError(t, err)
 	assert.Nil(t, result)
 }
 
 func TestParseChannelList_InvalidJSON(t *testing.T) {
-	result := parseChannelList([]byte("not json"))
+	result, err := parseChannelList([]byte("not json"))
+	assert.Error(t, err)
 	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "invalid channel list JSON")
 }
 
 func TestParseChannelList_Valid(t *testing.T) {
@@ -49,7 +53,8 @@ func TestParseChannelList_Valid(t *testing.T) {
 	data, err := json.Marshal(channels)
 	require.NoError(t, err)
 
-	result := parseChannelList(data)
+	result, err := parseChannelList(data)
+	require.NoError(t, err)
 	require.Len(t, result, 2)
 
 	assert.Equal(t, "ch1", result[0].Name)
@@ -68,6 +73,7 @@ func TestParseChannelList_Valid(t *testing.T) {
 
 func TestParseChannelList_EmptyArray(t *testing.T) {
 	data := []byte("[]")
-	result := parseChannelList(data)
+	result, err := parseChannelList(data)
+	require.NoError(t, err)
 	assert.Empty(t, result)
 }

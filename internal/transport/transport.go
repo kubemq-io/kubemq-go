@@ -41,6 +41,9 @@ type Transport interface {
 	SubscribeToCommands(ctx context.Context, req *SubscribeRequest) (*StreamHandle, error)
 	SubscribeToQueries(ctx context.Context, req *SubscribeRequest) (*StreamHandle, error)
 
+	// Event streaming
+	SendEventsStream(ctx context.Context) (*EventStreamHandle, error)
+
 	// Queue streaming
 	QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error)
 	QueueDownstream(ctx context.Context, req *QueueDownstreamRequest) (*QueueDownstreamHandle, error)
@@ -75,19 +78,44 @@ func NewStreamHandle(messages <-chan any, errors <-chan error, closeFn func()) *
 	}
 }
 
+// EventStreamHandle manages a bidirectional event send stream.
+type EventStreamHandle struct {
+	Results <-chan *EventStreamResult
+	Done    <-chan struct{}
+	SendFn  func(item *EventStreamItem) error
+	closeFn func()
+}
+
+// Send sends an event on the stream.
+func (h *EventStreamHandle) Send(item *EventStreamItem) error {
+	if h.SendFn == nil {
+		return fmt.Errorf("kubemq: event stream handle not initialized")
+	}
+	return h.SendFn(item)
+}
+
+// Close terminates the event stream.
+func (h *EventStreamHandle) Close() {
+	if h.closeFn != nil {
+		h.closeFn()
+	}
+}
+
 // QueueUpstreamHandle manages a bidirectional queue upstream (send) stream.
 type QueueUpstreamHandle struct {
 	Done    <-chan struct{}
-	SendFn  func(msgs []*QueueMessageItem) error
+	Results <-chan *QueueUpstreamResult
+	Errors  <-chan error
+	SendFn  func(requestID string, msgs []*QueueMessageItem) error
 	closeFn func()
 }
 
 // Send publishes messages through the upstream stream.
-func (h *QueueUpstreamHandle) Send(msgs []*QueueMessageItem) error {
+func (h *QueueUpstreamHandle) Send(requestID string, msgs []*QueueMessageItem) error {
 	if h.SendFn == nil {
 		return fmt.Errorf("kubemq: upstream handle not initialized")
 	}
-	return h.SendFn(msgs)
+	return h.SendFn(requestID, msgs)
 }
 
 // Close terminates the upstream stream.

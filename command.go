@@ -15,6 +15,7 @@ type Command struct {
 	Timeout  time.Duration
 	ClientId string
 	Tags     map[string]string
+	Span     []byte
 }
 
 // NewCommand creates an empty Command.
@@ -93,6 +94,7 @@ type CommandReceive struct {
 	Body       []byte
 	ResponseTo string
 	Tags       map[string]string
+	Span       []byte
 }
 
 // String returns a human-readable representation of the received command.

@@ -34,6 +34,24 @@ type SendEventStoreRequest struct {
 	Tags     map[string]string
 }
 
+// EventStreamItem is the internal request type for sending events on a stream.
+type EventStreamItem struct {
+	ID       string
+	ClientID string
+	Channel  string
+	Metadata string
+	Body     []byte
+	Tags     map[string]string
+	Store    bool
+}
+
+// EventStreamResult is the internal result type for event stream responses.
+type EventStreamResult struct {
+	EventID string
+	Sent    bool
+	Error   string
+}
+
 // SendEventStoreResult is the internal result type for event store send operations.
 type SendEventStoreResult struct {
 	ID   string
@@ -50,6 +68,7 @@ type SendCommandRequest struct {
 	Body     []byte
 	Timeout  time.Duration
 	Tags     map[string]string
+	Span     []byte
 }
 
 // SendCommandResult is the internal result type for command send operations.
@@ -73,6 +92,7 @@ type SendQueryRequest struct {
 	CacheKey string
 	CacheTTL time.Duration
 	Tags     map[string]string
+	Span     []byte
 }
 
 // SendQueryResult is the internal result type for query send operations.
@@ -98,6 +118,7 @@ type SendResponseRequest struct {
 	ExecutedAt time.Time
 	Err        error
 	Tags       map[string]string
+	Span       []byte
 }
 
 // QueueMessageItem is the internal representation of a queue message.
@@ -299,6 +320,7 @@ type CommandReceiveItem struct {
 	Body       []byte
 	ResponseTo string
 	Tags       map[string]string
+	Span       []byte
 }
 
 // QueryReceiveItem is the internal representation of a received query.
@@ -310,6 +332,15 @@ type QueryReceiveItem struct {
 	Body       []byte
 	ResponseTo string
 	Tags       map[string]string
+	Span       []byte
+}
+
+// QueueUpstreamResult is the internal representation of an upstream response.
+type QueueUpstreamResult struct {
+	RefRequestID string
+	Results      []*SendQueueMessageResultItem
+	IsError      bool
+	Error        string
 }
 
 // QueueDownstreamSendRequest is the internal request sent on a downstream stream.
@@ -324,6 +355,7 @@ type QueueDownstreamSendRequest struct {
 	ReQueueChannel   string
 	SequenceRange    []int64
 	RefTransactionID string
+	Metadata         map[string]string
 }
 
 // QueueDownstreamResult is the internal representation of a downstream response.

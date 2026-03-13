@@ -134,18 +134,6 @@ func WithMaxReceive(count int, deadLetterQueue string) QueueSendOption {
 	}}
 }
 
-// EventHandler is called for each received event or transport error.
-type EventHandler func(event *Event, err error)
-
-// EventStoreHandler is called for each received event store message or transport error.
-type EventStoreHandler func(event *EventStoreReceive, err error)
-
-// CommandHandler is called for each received command request or transport error.
-type CommandHandler func(cmd *CommandReceive, err error)
-
-// QueryHandler is called for each received query request or transport error.
-type QueryHandler func(query *QueryReceive, err error)
-
 // PublishEvent publishes a single event to the specified channel.
 // This is the minimal-code path — for full control, use NewEvent() with the builder pattern.
 //

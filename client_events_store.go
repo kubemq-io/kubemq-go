@@ -2,6 +2,7 @@ package kubemq
 
 import (
 	"context"
+	"time"
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/middleware"
 	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
@@ -11,8 +12,8 @@ import (
 
 // SubscribeToEventsStore subscribes to persistent events on the given channel.
 //
-// Wildcard patterns are supported in the channel parameter (same syntax as
-// SubscribeToEvents — see that method's documentation for details).
+// Wildcard patterns are NOT supported for Events Store subscriptions.
+// The channel must be an exact channel name.
 //
 // The startOpt parameter controls replay position: StartFromNewEvents(),
 // StartFromFirstEvent(), StartFromLastEvent(), StartFromSequence(n),
@@ -21,7 +22,7 @@ func (c *Client) SubscribeToEventsStore(ctx context.Context, channel, group stri
 	if err := c.checkClosed(); err != nil {
 		return nil, err
 	}
-	if err := validateChannel(channel); err != nil {
+	if err := validateChannelStrict(channel); err != nil {
 		return nil, err
 	}
 	cfg := &subscribeConfig{}
@@ -42,6 +43,34 @@ func (c *Client) SubscribeToEventsStore(ctx context.Context, channel, group stri
 	}
 
 	subType, subValue := subscriptionParamsFromOption(startOpt)
+	if subType == 0 {
+		return nil, &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: "events store subscription type must not be Undefined (use StartFromNewEvents, StartFromFirstEvent, etc.)",
+			Cause:   ErrValidation,
+		}
+	}
+	if subType == subscribeStartAtSequence && subValue <= 0 {
+		return nil, &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: "StartAtSequence value must be > 0",
+			Cause:   ErrValidation,
+		}
+	}
+	if subType == subscribeStartAtTime && subValue <= 0 {
+		return nil, &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: "StartAtTime value must be > 0",
+			Cause:   ErrValidation,
+		}
+	}
+	if subType == subscribeStartAtTimeDelta && subValue <= 0 {
+		return nil, &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: "StartAtTimeDelta value must be > 0",
+			Cause:   ErrValidation,
+		}
+	}
 
 	subCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -68,12 +97,13 @@ func (c *Client) SubscribeToEventsStore(ctx context.Context, channel, group stri
 				}
 				if e, ok := msg.(*transport.EventStoreReceiveItem); ok {
 					cfg.onEventStoreReceive(&EventStoreReceive{
-						Id:       e.ID,
-						Sequence: e.Sequence,
-						Channel:  e.Channel,
-						Metadata: e.Metadata,
-						Body:     e.Body,
-						Tags:     e.Tags,
+						Id:        e.ID,
+						Sequence:  e.Sequence,
+						Timestamp: time.Unix(0, e.Timestamp),
+						Channel:   e.Channel,
+						Metadata:  e.Metadata,
+						Body:      e.Body,
+						Tags:      e.Tags,
 					})
 				}
 			case err, ok := <-handle.Errors:
@@ -103,6 +133,9 @@ func (c *Client) SendEventStore(ctx context.Context, event *EventStore) (*EventS
 	if event.ClientId == "" {
 		event.ClientId = c.opts.clientId
 	}
+	if event.Id == "" {
+		event.Id = uuid.New()
+	}
 	if err := validateEventStore(event, c.opts); err != nil {
 		return nil, err
 	}
@@ -131,6 +164,65 @@ func (c *Client) SendEventStore(ctx context.Context, event *EventStore) (*EventS
 		Id:   result.ID,
 		Sent: result.Sent,
 		Err:  result.Err,
+	}, nil
+}
+
+// EventStoreStreamHandle manages a bidirectional event store send stream.
+// Each sent event receives a confirmation via Results.
+type EventStoreStreamHandle struct {
+	Send    func(event *EventStore) error
+	Results <-chan *EventStreamResult
+	Done    <-chan struct{}
+	Close   func()
+}
+
+// SendEventStoreStream opens a bidirectional stream for high-throughput event store publishing.
+// Each sent event receives a confirmation Result.
+func (c *Client) SendEventStoreStream(ctx context.Context) (*EventStoreStreamHandle, error) {
+	if err := c.checkClosed(); err != nil {
+		return nil, err
+	}
+	handle, err := c.transport.SendEventsStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pubResultCh := make(chan *EventStreamResult, 16)
+	go func() {
+		for r := range handle.Results {
+			if r != nil {
+				select {
+				case pubResultCh <- &EventStreamResult{
+					EventID: r.EventID,
+					Sent:    r.Sent,
+					Error:   r.Error,
+				}:
+				default:
+				}
+			}
+		}
+		close(pubResultCh)
+	}()
+	return &EventStoreStreamHandle{
+		Send: func(event *EventStore) error {
+			if event.Id == "" {
+				event.Id = uuid.New()
+			}
+			if event.ClientId == "" {
+				event.ClientId = c.opts.clientId
+			}
+			return handle.Send(&transport.EventStreamItem{
+				ID:       event.Id,
+				ClientID: event.ClientId,
+				Channel:  event.Channel,
+				Metadata: event.Metadata,
+				Body:     event.Body,
+				Tags:     event.Tags,
+				Store:    true,
+			})
+		},
+		Results: pubResultCh,
+		Done:    handle.Done,
+		Close:   handle.Close,
 	}, nil
 }
 

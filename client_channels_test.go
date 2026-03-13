@@ -129,3 +129,130 @@ func TestListChannels_TransportError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connection lost")
 }
+
+// --- Additional channel type validation tests ---
+
+func TestValidateChannelType_AllValidTypes(t *testing.T) {
+	validTypes := []string{
+		ChannelTypeEvents,
+		ChannelTypeEventsStore,
+		ChannelTypeCommands,
+		ChannelTypeQueries,
+		ChannelTypeQueues,
+	}
+	for _, ct := range validTypes {
+		t.Run(ct, func(t *testing.T) {
+			err := validateChannelType(ct, "TestOp")
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateChannelType_EmptyType(t *testing.T) {
+	err := validateChannelType("", "TestOp")
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Equal(t, ErrCodeValidation, kErr.Code)
+	assert.Contains(t, kErr.Message, "channel type is required")
+	assert.Equal(t, "TestOp", kErr.Operation)
+}
+
+func TestValidateChannelType_InvalidType(t *testing.T) {
+	err := validateChannelType("invalid_type", "CreateChannel")
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Equal(t, ErrCodeValidation, kErr.Code)
+	assert.Contains(t, kErr.Message, "invalid channel type")
+	assert.Contains(t, kErr.Message, "invalid_type")
+}
+
+func TestCreateChannel_InvalidChannelType(t *testing.T) {
+	c, _ := newTestClientWithMock(t)
+	err := c.CreateChannel(context.Background(), "my-channel", "invalid_type")
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Equal(t, ErrCodeValidation, kErr.Code)
+	assert.Contains(t, kErr.Message, "invalid channel type")
+}
+
+func TestDeleteChannel_InvalidChannelType(t *testing.T) {
+	c, _ := newTestClientWithMock(t)
+	err := c.DeleteChannel(context.Background(), "my-channel", "bad_type")
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Equal(t, ErrCodeValidation, kErr.Code)
+	assert.Contains(t, kErr.Message, "invalid channel type")
+}
+
+func TestListChannels_InvalidChannelType(t *testing.T) {
+	c, _ := newTestClientWithMock(t)
+	_, err := c.ListChannels(context.Background(), "wrong_type", "")
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Equal(t, ErrCodeValidation, kErr.Code)
+	assert.Contains(t, kErr.Message, "invalid channel type")
+}
+
+func TestCreateChannel_AllValidTypes(t *testing.T) {
+	validTypes := []string{
+		ChannelTypeEvents,
+		ChannelTypeEventsStore,
+		ChannelTypeCommands,
+		ChannelTypeQueries,
+		ChannelTypeQueues,
+	}
+	for _, ct := range validTypes {
+		t.Run(ct, func(t *testing.T) {
+			c, mt := newTestClientWithMock(t)
+			mt.OnCreateChannel(func(_ context.Context, req *transport.CreateChannelRequest) error {
+				assert.Equal(t, ct, req.ChannelType)
+				return nil
+			})
+			err := c.CreateChannel(context.Background(), "test-ch", ct)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestListChannels_WithDetailedStats(t *testing.T) {
+	c, mt := newTestClientWithMock(t)
+
+	mt.OnListChannels(func(_ context.Context, _ *transport.ListChannelsRequest) ([]*transport.ChannelInfo, error) {
+		return []*transport.ChannelInfo{
+			{
+				Name:         "ch-with-stats",
+				Type:         "events",
+				IsActive:     true,
+				LastActivity: 1234567890,
+				Incoming: &transport.ChannelStats{
+					Messages: 100, Volume: 5000, Responses: 0,
+				},
+				Outgoing: &transport.ChannelStats{
+					Messages: 95, Volume: 4750, Waiting: 5,
+				},
+			},
+		}, nil
+	})
+
+	channels, err := c.ListChannels(context.Background(), ChannelTypeEvents, "")
+	require.NoError(t, err)
+	require.Len(t, channels, 1)
+
+	ch := channels[0]
+	assert.Equal(t, "ch-with-stats", ch.Name)
+	assert.True(t, ch.IsActive)
+	assert.Equal(t, int64(1234567890), ch.LastActivity)
+
+	require.NotNil(t, ch.Incoming)
+	assert.Equal(t, int64(100), ch.Incoming.Messages)
+	assert.Equal(t, int64(5000), ch.Incoming.Volume)
+
+	require.NotNil(t, ch.Outgoing)
+	assert.Equal(t, int64(95), ch.Outgoing.Messages)
+	assert.Equal(t, int64(5), ch.Outgoing.Waiting)
+}

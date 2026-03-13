@@ -1,8 +1,6 @@
 package kubemq
 
 import (
-	"context"
-	"errors"
 	"time"
 )
 
@@ -57,33 +55,4 @@ func WithCallbackTimeout(d time.Duration) Option {
 	return newFuncOption(func(o *Options) {
 		o.callbackConfig.Timeout = d
 	})
-}
-
-// wrapContextError wraps context.Canceled and context.DeadlineExceeded
-// in KubeMQError with the appropriate error code. Non-context errors
-// are returned unchanged. If the context has not expired, nil is returned.
-func wrapContextError(ctx context.Context, op string) error {
-	err := ctx.Err()
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, context.Canceled) {
-		return &KubeMQError{
-			Code:        ErrCodeCancellation,
-			Message:     "operation cancelled by caller",
-			Operation:   op,
-			IsRetryable: false,
-			Cause:       err,
-		}
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return &KubeMQError{
-			Code:        ErrCodeTimeout,
-			Message:     "operation deadline exceeded",
-			Operation:   op,
-			IsRetryable: true,
-			Cause:       err,
-		}
-	}
-	return err
 }

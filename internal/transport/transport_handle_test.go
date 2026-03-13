@@ -21,21 +21,24 @@ func TestStreamHandle_Close_NilCloseFn(t *testing.T) {
 
 func TestQueueUpstreamHandle_Send(t *testing.T) {
 	var sentMsgs []*QueueMessageItem
+	var sentReqID string
 	h := &QueueUpstreamHandle{
-		SendFn: func(msgs []*QueueMessageItem) error {
+		SendFn: func(requestID string, msgs []*QueueMessageItem) error {
+			sentReqID = requestID
 			sentMsgs = msgs
 			return nil
 		},
 	}
-	err := h.Send([]*QueueMessageItem{{ID: "m1"}})
+	err := h.Send("req-123", []*QueueMessageItem{{ID: "m1"}})
 	require.NoError(t, err)
 	require.Len(t, sentMsgs, 1)
 	assert.Equal(t, "m1", sentMsgs[0].ID)
+	assert.Equal(t, "req-123", sentReqID)
 }
 
 func TestQueueUpstreamHandle_Send_NilFn(t *testing.T) {
 	h := &QueueUpstreamHandle{}
-	err := h.Send(nil)
+	err := h.Send("", nil)
 	require.Error(t, err)
 }
 

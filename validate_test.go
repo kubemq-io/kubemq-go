@@ -55,23 +55,6 @@ func TestValidateChannel_Invalid(t *testing.T) {
 	}
 }
 
-func TestValidateTimeout_Positive(t *testing.T) {
-	assert.NoError(t, validateTimeout(1*time.Second))
-}
-
-func TestValidateTimeout_Negative(t *testing.T) {
-	err := validateTimeout(-1 * time.Second)
-	require.Error(t, err)
-	var kErr *KubeMQError
-	require.True(t, errors.As(err, &kErr))
-	assert.Equal(t, ErrCodeValidation, kErr.Code)
-}
-
-func TestValidateTimeout_Zero(t *testing.T) {
-	err := validateTimeout(0)
-	require.Error(t, err)
-}
-
 func TestValidateClientID_Empty(t *testing.T) {
 	err := validateClientID("")
 	assert.Error(t, err)
@@ -145,12 +128,6 @@ func TestValidateTags_ValueTooLong(t *testing.T) {
 
 func TestValidateTags_Nil(t *testing.T) {
 	assert.NoError(t, validateTags(nil))
-}
-
-func TestValidateSequenceNumber(t *testing.T) {
-	assert.NoError(t, validateSequenceNumber(0))
-	assert.NoError(t, validateSequenceNumber(100))
-	assert.Error(t, validateSequenceNumber(-1))
 }
 
 func TestValidateEvent_Valid(t *testing.T) {
