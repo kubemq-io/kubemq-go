@@ -553,6 +553,8 @@ func (t *grpcTransport) SendEventStore(ctx context.Context, req *SendEventStoreR
 }
 
 // SendEventsStream opens a bidirectional stream for sending events (both regular and store).
+// The stream auto-reconnects on connection errors: the recv loop waits for
+// the transport to re-establish the connection and then re-opens the gRPC stream.
 func (t *grpcTransport) SendEventsStream(ctx context.Context) (*EventStreamHandle, error) {
 	if !t.enterOperation() {
 		return nil, fmt.Errorf("kubemq: client closed")
@@ -564,21 +566,52 @@ func (t *grpcTransport) SendEventsStream(ctx context.Context) (*EventStreamHandl
 	}
 
 	streamCtx, streamCancel := context.WithCancel(ctx)
-	stream, err := t.getClient().SendEventsStream(streamCtx)
+
+	openStream := func() (pb.Kubemq_SendEventsStreamClient, error) {
+		return t.getClient().SendEventsStream(streamCtx)
+	}
+
+	stream, err := openStream()
 	if err != nil {
 		streamCancel()
 		return nil, fmt.Errorf("send events stream: %w", err)
 	}
 
+	var mu sync.Mutex
 	doneCh := make(chan struct{})
 	resultCh := make(chan *EventStreamResult, 16)
+
 	go func() {
 		defer close(doneCh)
 		defer close(resultCh)
 		for {
-			resp, err := stream.Recv()
-			if err != nil {
-				return
+			resp, recvErr := stream.Recv()
+			if recvErr != nil {
+				select {
+				case <-streamCtx.Done():
+					return
+				default:
+				}
+				if !isConnectionError(recvErr) {
+					return
+				}
+				t.logger.Info("event send stream lost, waiting for reconnection")
+				reconnectCh := t.waitReconnect()
+				select {
+				case <-streamCtx.Done():
+					return
+				case <-reconnectCh:
+				}
+				t.logger.Info("reconnection detected, re-opening event send stream")
+				newStream, openErr := openStream()
+				if openErr != nil {
+					t.logger.Error("event send stream re-open failed", "error", openErr)
+					return
+				}
+				mu.Lock()
+				stream = newStream
+				mu.Unlock()
+				continue
 			}
 			result := EventStreamResultFromProto(resp)
 			if result != nil {
@@ -595,11 +628,17 @@ func (t *grpcTransport) SendEventsStream(ctx context.Context) (*EventStreamHandl
 		Results: resultCh,
 		Done:    doneCh,
 		SendFn: func(item *EventStreamItem) error {
+			mu.Lock()
+			s := stream
+			mu.Unlock()
 			pbEvent := EventStreamItemToProto(item, t.cfg.ClientID)
-			return stream.Send(pbEvent)
+			return s.Send(pbEvent)
 		},
 		closeFn: func() {
-			_ = stream.CloseSend()
+			mu.Lock()
+			s := stream
+			mu.Unlock()
+			_ = s.CloseSend()
 			streamCancel()
 		},
 	}
@@ -1053,6 +1092,8 @@ func (t *grpcTransport) recvLoop(ctx context.Context, stream recvStream, subType
 }
 
 // QueueUpstream opens a bidirectional stream for sending queue messages.
+// The stream auto-reconnects on connection errors: the recv loop waits for
+// the transport to re-establish the connection and then re-opens the gRPC stream.
 func (t *grpcTransport) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error) {
 	if !t.enterOperation() {
 		return nil, fmt.Errorf("kubemq: client closed")
@@ -1064,26 +1105,66 @@ func (t *grpcTransport) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle
 	}
 
 	streamCtx, streamCancel := context.WithCancel(ctx)
-	stream, err := t.getClient().QueuesUpstream(streamCtx)
+
+	openStream := func() (pb.Kubemq_QueuesUpstreamClient, error) {
+		return t.getClient().QueuesUpstream(streamCtx)
+	}
+
+	stream, err := openStream()
 	if err != nil {
 		streamCancel()
 		return nil, fmt.Errorf("queue upstream: %w", err)
 	}
 
+	var mu sync.Mutex
 	doneCh := make(chan struct{})
 	resultCh := make(chan *QueueUpstreamResult, 16)
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 8)
+
 	go func() {
 		defer close(doneCh)
 		defer close(resultCh)
+		defer close(errCh)
 		for {
-			resp, err := stream.Recv()
-			if err != nil {
+			resp, recvErr := stream.Recv()
+			if recvErr != nil {
 				select {
-				case errCh <- err:
+				case <-streamCtx.Done():
+					return
 				default:
 				}
-				return
+				if !isConnectionError(recvErr) {
+					select {
+					case errCh <- recvErr:
+					default:
+					}
+					return
+				}
+				t.logger.Info("queue upstream stream lost, waiting for reconnection")
+				select {
+				case errCh <- fmt.Errorf("kubemq: queue upstream stream reconnecting: %w", recvErr):
+				default:
+				}
+				reconnectCh := t.waitReconnect()
+				select {
+				case <-streamCtx.Done():
+					return
+				case <-reconnectCh:
+				}
+				t.logger.Info("reconnection detected, re-opening queue upstream stream")
+				newStream, openErr := openStream()
+				if openErr != nil {
+					t.logger.Error("queue upstream stream re-open failed", "error", openErr)
+					select {
+					case errCh <- fmt.Errorf("queue upstream recovery failed: %w", openErr):
+					default:
+					}
+					return
+				}
+				mu.Lock()
+				stream = newStream
+				mu.Unlock()
+				continue
 			}
 			result := QueueUpstreamResponseFromProto(resp)
 			select {
@@ -1099,17 +1180,23 @@ func (t *grpcTransport) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle
 		Results: resultCh,
 		Errors:  errCh,
 		SendFn: func(requestID string, msgs []*QueueMessageItem) error {
+			mu.Lock()
+			s := stream
+			mu.Unlock()
 			pbMsgs := make([]*pb.QueueMessage, 0, len(msgs))
 			for _, m := range msgs {
 				pbMsgs = append(pbMsgs, QueueMessageToProto(m, t.cfg.ClientID))
 			}
-			return stream.Send(&pb.QueuesUpstreamRequest{
+			return s.Send(&pb.QueuesUpstreamRequest{
 				RequestID: requestID,
 				Messages:  pbMsgs,
 			})
 		},
 		closeFn: func() {
-			_ = stream.CloseSend()
+			mu.Lock()
+			s := stream
+			mu.Unlock()
+			_ = s.CloseSend()
 			streamCancel()
 		},
 	}
@@ -1117,6 +1204,10 @@ func (t *grpcTransport) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle
 }
 
 // QueueDownstream opens a bidirectional stream for receiving and managing queue messages.
+// The stream auto-reconnects on connection errors: the recv loop waits for
+// the transport to re-establish the connection and then re-opens the gRPC stream.
+// After reconnection, any previous transaction is invalidated — the caller must
+// issue a new Get request to start a fresh transaction.
 func (t *grpcTransport) QueueDownstream(ctx context.Context, req *QueueDownstreamRequest) (*QueueDownstreamHandle, error) {
 	if !t.enterOperation() {
 		return nil, fmt.Errorf("kubemq: client closed")
@@ -1128,12 +1219,18 @@ func (t *grpcTransport) QueueDownstream(ctx context.Context, req *QueueDownstrea
 	}
 
 	streamCtx, streamCancel := context.WithCancel(ctx)
-	stream, err := t.getClient().QueuesDownstream(streamCtx)
+
+	openStream := func() (pb.Kubemq_QueuesDownstreamClient, error) {
+		return t.getClient().QueuesDownstream(streamCtx)
+	}
+
+	stream, err := openStream()
 	if err != nil {
 		streamCancel()
 		return nil, fmt.Errorf("queue downstream: %w", err)
 	}
 
+	var mu sync.Mutex
 	msgCh := make(chan any, t.cfg.ReceiveBufferSize)
 	errCh := make(chan error, 8)
 
@@ -1141,13 +1238,45 @@ func (t *grpcTransport) QueueDownstream(ctx context.Context, req *QueueDownstrea
 		defer close(msgCh)
 		defer close(errCh)
 		for {
-			resp, err := stream.Recv()
-			if err != nil {
+			resp, recvErr := stream.Recv()
+			if recvErr != nil {
 				select {
 				case <-streamCtx.Done():
-				case errCh <- err:
+					return
+				default:
 				}
-				return
+				if !isConnectionError(recvErr) {
+					select {
+					case errCh <- recvErr:
+					case <-streamCtx.Done():
+					}
+					return
+				}
+				t.logger.Info("queue downstream stream lost, waiting for reconnection")
+				select {
+				case errCh <- fmt.Errorf("kubemq: queue downstream stream reconnecting: %w", recvErr):
+				default:
+				}
+				reconnectCh := t.waitReconnect()
+				select {
+				case <-streamCtx.Done():
+					return
+				case <-reconnectCh:
+				}
+				t.logger.Info("reconnection detected, re-opening queue downstream stream")
+				newStream, openErr := openStream()
+				if openErr != nil {
+					t.logger.Error("queue downstream stream re-open failed", "error", openErr)
+					select {
+					case errCh <- fmt.Errorf("queue downstream recovery failed: %w", openErr):
+					case <-streamCtx.Done():
+					}
+					return
+				}
+				mu.Lock()
+				stream = newStream
+				mu.Unlock()
+				continue
 			}
 			if pb.QueuesDownstreamRequestType(resp.RequestTypeData) == 11 {
 				select {
@@ -1177,6 +1306,9 @@ func (t *grpcTransport) QueueDownstream(ctx context.Context, req *QueueDownstrea
 		Messages: msgCh,
 		Errors:   errCh,
 		SendFn: func(r *QueueDownstreamSendRequest) error {
+			mu.Lock()
+			s := stream
+			mu.Unlock()
 			pbReq := &pb.QueuesDownstreamRequest{
 				RequestID:        r.RequestID,
 				ClientID:         firstNonEmpty(r.ClientID, t.cfg.ClientID),
@@ -1190,10 +1322,13 @@ func (t *grpcTransport) QueueDownstream(ctx context.Context, req *QueueDownstrea
 				RefTransactionId: r.RefTransactionID,
 				Metadata:         r.Metadata,
 			}
-			return stream.Send(pbReq)
+			return s.Send(pbReq)
 		},
 		closeFn: func() {
-			_ = stream.CloseSend()
+			mu.Lock()
+			s := stream
+			mu.Unlock()
+			_ = s.CloseSend()
 			streamCancel()
 		},
 	}
@@ -1298,7 +1433,7 @@ func (t *grpcTransport) ListChannels(ctx context.Context, req *ListChannelsReque
 		},
 	}
 	if req.Search != "" {
-		pbReq.Tags["search"] = req.Search
+		pbReq.Tags["channel_search"] = req.Search
 	}
 	resp, err := t.getClient().SendRequest(ctx, pbReq)
 	if err != nil {
