@@ -3,13 +3,12 @@ package kubemq
 import (
 	"fmt"
 	"regexp"
-	"time"
+	"strings"
 	"unicode/utf8"
 )
 
 const (
 	maxChannelLength  = 256
-	maxMetadataSize   = 1024 * 1024       // 1 MB
 	maxBodySize       = 100 * 1024 * 1024 // 100 MB (matches gRPC max)
 	maxTagKeyLength   = 256
 	maxTagValueLength = 4096
@@ -46,14 +45,24 @@ func validateChannel(channel string) error {
 			Cause:   ErrValidation,
 		}
 	}
+	if strings.HasSuffix(channel, ".") {
+		return &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: fmt.Sprintf("channel name %q cannot end with '.'", channel),
+			Cause:   ErrValidation,
+		}
+	}
 	return nil
 }
 
-func validateTimeout(d time.Duration) error {
-	if d <= 0 {
+func validateChannelStrict(channel string) error {
+	if err := validateChannel(channel); err != nil {
+		return err
+	}
+	if strings.ContainsAny(channel, "*>") {
 		return &KubeMQError{
 			Code:    ErrCodeValidation,
-			Message: fmt.Sprintf("timeout must be positive, got %v", d),
+			Message: fmt.Sprintf("wildcard characters '*' and '>' are not allowed in channel %q for this operation", channel),
 			Cause:   ErrValidation,
 		}
 	}
@@ -72,6 +81,35 @@ func validateClientID(id string) error {
 		return &KubeMQError{
 			Code:    ErrCodeValidation,
 			Message: "clientId contains invalid UTF-8",
+			Cause:   ErrValidation,
+		}
+	}
+	return nil
+}
+
+func validateContent(metadata string, body []byte) error {
+	if metadata == "" && len(body) == 0 {
+		return &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: "at least one of metadata or body must be non-empty",
+			Cause:   ErrValidation,
+		}
+	}
+	return nil
+}
+
+func validateQueueReceive(maxMsgs int32, waitSec int32) error {
+	if maxMsgs < 1 || maxMsgs > 1024 {
+		return &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: fmt.Sprintf("MaxNumberOfMessages must be between 1 and 1024, got %d", maxMsgs),
+			Cause:   ErrValidation,
+		}
+	}
+	if waitSec < 0 || waitSec > 3600 {
+		return &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: fmt.Sprintf("WaitTimeSeconds must be between 0 and 3600, got %d", waitSec),
 			Cause:   ErrValidation,
 		}
 	}
@@ -119,23 +157,15 @@ func validateTags(tags map[string]string) error {
 	return nil
 }
 
-func validateSequenceNumber(seq int64) error {
-	if seq < 0 {
-		return &KubeMQError{
-			Code:    ErrCodeValidation,
-			Message: fmt.Sprintf("sequence number must be non-negative, got %d", seq),
-			Cause:   ErrValidation,
-		}
-	}
-	return nil
-}
-
 func validateEvent(e *Event, opts *Options) error {
 	channel := e.Channel
 	if channel == "" && opts != nil {
 		channel = opts.defaultChannel
 	}
-	if err := validateChannel(channel); err != nil {
+	if err := validateChannelStrict(channel); err != nil {
+		return err
+	}
+	if err := validateContent(e.Metadata, e.Body); err != nil {
 		return err
 	}
 	maxSize := maxBodySize
@@ -156,7 +186,10 @@ func validateEventStore(es *EventStore, opts *Options) error {
 	if channel == "" && opts != nil {
 		channel = opts.defaultChannel
 	}
-	if err := validateChannel(channel); err != nil {
+	if err := validateChannelStrict(channel); err != nil {
+		return err
+	}
+	if err := validateContent(es.Metadata, es.Body); err != nil {
 		return err
 	}
 	maxSize := maxBodySize
@@ -177,7 +210,7 @@ func validateCommand(cmd *Command, opts *Options) error {
 	if channel == "" && opts != nil {
 		channel = opts.defaultChannel
 	}
-	if err := validateChannel(channel); err != nil {
+	if err := validateChannelStrict(channel); err != nil {
 		return err
 	}
 	if cmd.Timeout <= 0 {
@@ -187,7 +220,14 @@ func validateCommand(cmd *Command, opts *Options) error {
 			Cause:   ErrValidation,
 		}
 	}
-	if err := validateMessageBody(cmd.Body, 0); err != nil {
+	if err := validateContent(cmd.Metadata, cmd.Body); err != nil {
+		return err
+	}
+	maxSize := maxBodySize
+	if opts != nil && opts.maxSendMsgSize > 0 {
+		maxSize = opts.maxSendMsgSize
+	}
+	if err := validateMessageBody(cmd.Body, maxSize); err != nil {
 		return err
 	}
 	if err := validateTags(cmd.Tags); err != nil {
@@ -201,7 +241,7 @@ func validateQuery(q *Query, opts *Options) error {
 	if channel == "" && opts != nil {
 		channel = opts.defaultChannel
 	}
-	if err := validateChannel(channel); err != nil {
+	if err := validateChannelStrict(channel); err != nil {
 		return err
 	}
 	if q.Timeout <= 0 {
@@ -211,7 +251,21 @@ func validateQuery(q *Query, opts *Options) error {
 			Cause:   ErrValidation,
 		}
 	}
-	if err := validateMessageBody(q.Body, 0); err != nil {
+	if q.CacheKey != "" && q.CacheTTL <= 0 {
+		return &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: "CacheTTL must be > 0 when CacheKey is set",
+			Cause:   ErrValidation,
+		}
+	}
+	if err := validateContent(q.Metadata, q.Body); err != nil {
+		return err
+	}
+	maxSize2 := maxBodySize
+	if opts != nil && opts.maxSendMsgSize > 0 {
+		maxSize2 = opts.maxSendMsgSize
+	}
+	if err := validateMessageBody(q.Body, maxSize2); err != nil {
 		return err
 	}
 	if err := validateTags(q.Tags); err != nil {
@@ -225,7 +279,10 @@ func validateQueueMessage(msg *QueueMessage, opts *Options) error {
 	if channel == "" && opts != nil {
 		channel = opts.defaultChannel
 	}
-	if err := validateChannel(channel); err != nil {
+	if err := validateChannelStrict(channel); err != nil {
+		return err
+	}
+	if err := validateContent(msg.Metadata, msg.Body); err != nil {
 		return err
 	}
 	maxSize := maxBodySize

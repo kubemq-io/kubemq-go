@@ -18,7 +18,7 @@ func (c *Client) SubscribeToCommands(ctx context.Context, channel, group string,
 	if err := c.checkClosed(); err != nil {
 		return nil, err
 	}
-	if err := validateChannel(channel); err != nil {
+	if err := validateChannelStrict(channel); err != nil {
 		return nil, err
 	}
 	cfg := &subscribeConfig{}
@@ -68,6 +68,7 @@ func (c *Client) SubscribeToCommands(ctx context.Context, channel, group string,
 						Body:       cmd.Body,
 						ResponseTo: cmd.ResponseTo,
 						Tags:       cmd.Tags,
+						Span:       cmd.Span,
 					})
 				}
 			case err, ok := <-handle.Errors:
@@ -100,6 +101,9 @@ func (c *Client) SendCommand(ctx context.Context, command *Command) (*CommandRes
 	if command.Timeout == 0 {
 		command.Timeout = defaultRequestTimeout
 	}
+	if command.Id == "" {
+		command.Id = uuid.New()
+	}
 	if err := validateCommand(command, c.opts); err != nil {
 		return nil, err
 	}
@@ -119,6 +123,7 @@ func (c *Client) SendCommand(ctx context.Context, command *Command) (*CommandRes
 		Body:     command.Body,
 		Timeout:  command.Timeout,
 		Tags:     command.Tags,
+		Span:     command.Span,
 	}
 	result, err := c.transport.SendCommand(ctx, req)
 	finish(err)
@@ -156,6 +161,7 @@ func (c *Client) SendResponse(ctx context.Context, response *Response) error {
 		ExecutedAt: response.ExecutedAt,
 		Err:        response.Err,
 		Tags:       response.Tags,
+		Span:       response.Span,
 	}
 	return c.transport.SendResponse(ctx, req)
 }

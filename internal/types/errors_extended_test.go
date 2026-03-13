@@ -115,7 +115,7 @@ func TestClassifyGRPCCode_AllCodes(t *testing.T) {
 		wantCat  ErrorCategory
 		wantCode ErrorCode
 	}{
-		{codes.OK, CategoryTransient, ErrCodeTransient},
+		{codes.OK, CategoryCancellation, ErrCodeCancellation},
 		{codes.Canceled, CategoryCancellation, ErrCodeCancellation},
 		{codes.Unknown, CategoryTransient, ErrCodeTransient},
 		{codes.InvalidArgument, CategoryValidation, ErrCodeValidation},

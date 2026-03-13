@@ -6,6 +6,31 @@ import (
 	pb "github.com/kubemq-io/protobuf/go"
 )
 
+// EventStreamItemToProto converts an EventStreamItem to a protobuf Event.
+func EventStreamItemToProto(item *EventStreamItem, clientID string) *pb.Event {
+	return &pb.Event{
+		EventID:  item.ID,
+		ClientID: firstNonEmpty(item.ClientID, clientID),
+		Channel:  item.Channel,
+		Metadata: item.Metadata,
+		Body:     item.Body,
+		Store:    item.Store,
+		Tags:     item.Tags,
+	}
+}
+
+// EventStreamResultFromProto converts a protobuf Result to an EventStreamResult.
+func EventStreamResultFromProto(r *pb.Result) *EventStreamResult {
+	if r == nil {
+		return nil
+	}
+	return &EventStreamResult{
+		EventID: r.EventID,
+		Sent:    r.Sent,
+		Error:   r.Error,
+	}
+}
+
 // EventToProto converts an internal SendEventRequest to a protobuf Event.
 func EventToProto(req *SendEventRequest, clientID string) *pb.Event {
 	return &pb.Event{
@@ -54,6 +79,7 @@ func CommandToProto(req *SendCommandRequest, clientID string) *pb.Request {
 		Body:            req.Body,
 		Timeout:         int32(req.Timeout.Milliseconds()),
 		Tags:            req.Tags,
+		Span:            req.Span,
 	}
 }
 
@@ -85,6 +111,7 @@ func QueryToProto(req *SendQueryRequest, clientID string) *pb.Request {
 		CacheKey:        req.CacheKey,
 		CacheTTL:        int32(req.CacheTTL.Milliseconds()),
 		Tags:            req.Tags,
+		Span:            req.Span,
 	}
 }
 
@@ -122,6 +149,7 @@ func ResponseToProto(req *SendResponseRequest) *pb.Response {
 		Executed:     req.Err == nil,
 		Error:        errStr,
 		Tags:         req.Tags,
+		Span:         req.Span,
 	}
 }
 
@@ -293,6 +321,7 @@ func CommandReceiveFromProto(r *pb.Request) *CommandReceiveItem {
 		Body:       r.Body,
 		ResponseTo: r.ReplyChannel,
 		Tags:       r.Tags,
+		Span:       r.Span,
 	}
 }
 
@@ -309,6 +338,31 @@ func QueryReceiveFromProto(r *pb.Request) *QueryReceiveItem {
 		Body:       r.Body,
 		ResponseTo: r.ReplyChannel,
 		Tags:       r.Tags,
+		Span:       r.Span,
+	}
+}
+
+// QueueUpstreamResponseFromProto converts a protobuf QueuesUpstreamResponse to a QueueUpstreamResult.
+func QueueUpstreamResponseFromProto(r *pb.QueuesUpstreamResponse) *QueueUpstreamResult {
+	if r == nil {
+		return nil
+	}
+	results := make([]*SendQueueMessageResultItem, 0, len(r.Results))
+	for _, res := range r.Results {
+		results = append(results, &SendQueueMessageResultItem{
+			MessageID:    res.MessageID,
+			SentAt:       res.SentAt,
+			ExpirationAt: res.ExpirationAt,
+			DelayedTo:    res.DelayedTo,
+			IsError:      res.IsError,
+			Error:        res.Error,
+		})
+	}
+	return &QueueUpstreamResult{
+		RefRequestID: r.RefRequestID,
+		Results:      results,
+		IsError:      r.IsError,
+		Error:        r.Error,
 	}
 }
 

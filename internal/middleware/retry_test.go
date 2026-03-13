@@ -164,3 +164,53 @@ func TestRetry_Name(t *testing.T) {
 	ri := NewRetryInterceptor(types.DefaultRetryPolicy(), nil, 10)
 	assert.Equal(t, "retry", ri.Name())
 }
+
+func TestBackoff_JitterFull(t *testing.T) {
+	ri := &retryInterceptor{
+		policy: types.RetryPolicy{
+			InitialBackoff: 100 * time.Millisecond,
+			MaxBackoff:     10 * time.Second,
+			Multiplier:     2.0,
+			JitterMode:     types.JitterFull,
+		},
+	}
+	for i := 0; i < 200; i++ {
+		d := ri.backoff(1)
+		assert.GreaterOrEqual(t, d, time.Duration(0))
+		assert.LessOrEqual(t, d, 100*time.Millisecond)
+	}
+}
+
+func TestBackoff_JitterEqual(t *testing.T) {
+	ri := &retryInterceptor{
+		policy: types.RetryPolicy{
+			InitialBackoff: 100 * time.Millisecond,
+			MaxBackoff:     10 * time.Second,
+			Multiplier:     2.0,
+			JitterMode:     types.JitterEqual,
+		},
+	}
+	for i := 0; i < 200; i++ {
+		d := ri.backoff(1)
+		assert.GreaterOrEqual(t, d, 50*time.Millisecond)
+		assert.LessOrEqual(t, d, 100*time.Millisecond)
+	}
+}
+
+func TestBackoff_MaxBackoffCap(t *testing.T) {
+	ri := &retryInterceptor{
+		policy: types.RetryPolicy{
+			InitialBackoff: 100 * time.Millisecond,
+			MaxBackoff:     50 * time.Millisecond,
+			Multiplier:     2.0,
+			JitterMode:     types.JitterNone,
+		},
+	}
+	// attempt=1: delay = 100ms * 2^0 = 100ms, capped to 50ms
+	d := ri.backoff(1)
+	assert.Equal(t, 50*time.Millisecond, d)
+
+	// attempt=3: delay = 100ms * 2^2 = 400ms, capped to 50ms
+	d = ri.backoff(3)
+	assert.Equal(t, 50*time.Millisecond, d)
+}

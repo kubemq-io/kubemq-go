@@ -18,7 +18,7 @@ func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, 
 	if err := c.checkClosed(); err != nil {
 		return nil, err
 	}
-	if err := validateChannel(channel); err != nil {
+	if err := validateChannelStrict(channel); err != nil {
 		return nil, err
 	}
 	cfg := &subscribeConfig{}
@@ -68,6 +68,7 @@ func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, 
 						Body:       q.Body,
 						ResponseTo: q.ResponseTo,
 						Tags:       q.Tags,
+						Span:       q.Span,
 					})
 				}
 			case err, ok := <-handle.Errors:
@@ -100,6 +101,9 @@ func (c *Client) SendQuery(ctx context.Context, query *Query) (*QueryResponse, e
 	if query.Timeout == 0 {
 		query.Timeout = defaultRequestTimeout
 	}
+	if query.Id == "" {
+		query.Id = uuid.New()
+	}
 	if err := validateQuery(query, c.opts); err != nil {
 		return nil, err
 	}
@@ -121,6 +125,7 @@ func (c *Client) SendQuery(ctx context.Context, query *Query) (*QueryResponse, e
 		CacheKey: query.CacheKey,
 		CacheTTL: query.CacheTTL,
 		Tags:     query.Tags,
+		Span:     query.Span,
 	}
 	result, err := c.transport.SendQuery(ctx, req)
 	finish(err)

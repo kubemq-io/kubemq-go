@@ -2,6 +2,7 @@ package kubemq
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/middleware"
 	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
@@ -102,6 +103,9 @@ func (c *Client) SendEvent(ctx context.Context, event *Event) error {
 	if event.ClientId == "" {
 		event.ClientId = c.opts.clientId
 	}
+	if event.Id == "" {
+		event.Id = uuid.New()
+	}
 	if err := validateEvent(event, c.opts); err != nil {
 		return err
 	}
@@ -124,6 +128,61 @@ func (c *Client) SendEvent(ctx context.Context, event *Event) error {
 	err := c.transport.SendEvent(ctx, req)
 	finish(err)
 	return err
+}
+
+// EventStreamHandle manages a bidirectional event send stream.
+// Events sent via Send are fire-and-forget; only errors are reported via Errors.
+type EventStreamHandle struct {
+	Send   func(event *Event) error
+	Errors <-chan error
+	Done   <-chan struct{}
+	Close  func()
+}
+
+// SendEventStream opens a bidirectional stream for high-throughput event publishing.
+// Events are fire-and-forget; results are only returned for errors.
+func (c *Client) SendEventStream(ctx context.Context) (*EventStreamHandle, error) {
+	if err := c.checkClosed(); err != nil {
+		return nil, err
+	}
+	handle, err := c.transport.SendEventsStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	errCh := make(chan error, 16)
+	go func() {
+		for r := range handle.Results {
+			if r != nil && !r.Sent && r.Error != "" {
+				select {
+				case errCh <- fmt.Errorf("event %s: %s", r.EventID, r.Error):
+				default:
+				}
+			}
+		}
+		close(errCh)
+	}()
+	return &EventStreamHandle{
+		Send: func(event *Event) error {
+			if event.Id == "" {
+				event.Id = uuid.New()
+			}
+			if event.ClientId == "" {
+				event.ClientId = c.opts.clientId
+			}
+			return handle.Send(&transport.EventStreamItem{
+				ID:       event.Id,
+				ClientID: event.ClientId,
+				Channel:  event.Channel,
+				Metadata: event.Metadata,
+				Body:     event.Body,
+				Tags:     event.Tags,
+				Store:    false,
+			})
+		},
+		Errors: errCh,
+		Done:   handle.Done,
+		Close:  handle.Close,
+	}, nil
 }
 
 // NewEvent creates a new Event pre-populated with client defaults.
