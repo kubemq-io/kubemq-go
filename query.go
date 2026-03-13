@@ -17,6 +17,7 @@ type Query struct {
 	CacheKey string
 	CacheTTL time.Duration
 	Tags     map[string]string
+	Span     []byte
 }
 
 // NewQuery creates an empty Query.
@@ -107,6 +108,7 @@ type QueryReceive struct {
 	Body       []byte
 	ResponseTo string
 	Tags       map[string]string
+	Span       []byte
 }
 
 // String returns a human-readable representation of the received query.

@@ -16,6 +16,7 @@ type Response struct {
 	ExecutedAt time.Time
 	Err        error
 	Tags       map[string]string
+	Span       []byte
 }
 
 // NewResponse creates an empty Response.
@@ -49,7 +50,15 @@ func (r *Response) SetBody(body []byte) *Response {
 
 // SetTags sets the response tags.
 func (r *Response) SetTags(tags map[string]string) *Response {
-	r.Tags = tags
+	if tags == nil {
+		r.Tags = nil
+		return r
+	}
+	cp := make(map[string]string, len(tags))
+	for k, v := range tags {
+		cp[k] = v
+	}
+	r.Tags = cp
 	return r
 }
 
