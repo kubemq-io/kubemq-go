@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"testing"
@@ -65,4 +66,14 @@ func TestClassifyTLSError_Network(t *testing.T) {
 	code, retryable := ClassifyTLSError(errors.New("connection reset by peer"))
 	assert.Equal(t, types.ErrCodeTransient, code)
 	assert.True(t, retryable)
+}
+
+func TestClassifyTLSError_CertificateVerificationError(t *testing.T) {
+	err := &tls.CertificateVerificationError{
+		UnverifiedCertificates: nil,
+		Err:                    errors.New("certificate has expired"),
+	}
+	code, retryable := ClassifyTLSError(err)
+	assert.Equal(t, types.ErrCodeAuthentication, code)
+	assert.False(t, retryable)
 }

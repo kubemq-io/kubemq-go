@@ -8,7 +8,9 @@ import (
 	"github.com/kubemq-io/kubemq-go/v2/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -83,4 +85,49 @@ func TestErrmapInterceptor_PassthroughKubeMQError(t *testing.T) {
 	}
 	result := mapper.mapError(context.Background(), "SendEvent", existing)
 	assert.Equal(t, existing, result)
+}
+
+type mockClientStream struct {
+	grpc.ClientStream
+	recvErr error
+}
+
+func (m *mockClientStream) RecvMsg(msg any) error        { return m.recvErr }
+func (m *mockClientStream) SendMsg(msg any) error        { return nil }
+func (m *mockClientStream) CloseSend() error             { return nil }
+func (m *mockClientStream) Header() (metadata.MD, error) { return nil, nil }
+func (m *mockClientStream) Trailer() metadata.MD         { return nil }
+func (m *mockClientStream) Context() context.Context     { return context.Background() }
+
+func TestMappedStream_RecvMsg_Error(t *testing.T) {
+	grpcErr := status.Error(codes.Unavailable, "connection refused")
+	mock := &mockClientStream{recvErr: grpcErr}
+	mapper := NewErrmapInterceptor()
+	ms := &mappedStream{
+		ClientStream: mock,
+		ctx:          context.Background(),
+		method:       "TestStream",
+		mapper:       mapper,
+	}
+
+	err := ms.RecvMsg(nil)
+	require.Error(t, err)
+	var kErr *types.KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Equal(t, "TestStream", kErr.Operation)
+	assert.True(t, kErr.IsRetryable)
+}
+
+func TestMappedStream_RecvMsg_Success(t *testing.T) {
+	mock := &mockClientStream{recvErr: nil}
+	mapper := NewErrmapInterceptor()
+	ms := &mappedStream{
+		ClientStream: mock,
+		ctx:          context.Background(),
+		method:       "TestStream",
+		mapper:       mapper,
+	}
+
+	err := ms.RecvMsg(nil)
+	assert.NoError(t, err)
 }

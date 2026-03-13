@@ -398,6 +398,45 @@ func TestSubscriptionTrackerGetLastSeqMissing(t *testing.T) {
 	assert.Equal(t, int64(0), st.getLastSeq("nonexistent"))
 }
 
+func TestComputeDelay_JitterFull_ZeroBase(t *testing.T) {
+	rl := &reconnectLoop{
+		policy: types.ReconnectPolicy{
+			InitialDelay: 0,
+			MaxDelay:     30 * time.Second,
+			Multiplier:   2.0,
+			JitterMode:   types.JitterFull,
+		},
+	}
+	d := rl.computeDelay(1)
+	assert.Equal(t, time.Duration(0), d)
+}
+
+func TestComputeDelay_JitterEqual_ZeroBase(t *testing.T) {
+	rl := &reconnectLoop{
+		policy: types.ReconnectPolicy{
+			InitialDelay: 0,
+			MaxDelay:     30 * time.Second,
+			Multiplier:   2.0,
+			JitterMode:   types.JitterEqual,
+		},
+	}
+	d := rl.computeDelay(1)
+	assert.Equal(t, time.Duration(0), d)
+}
+
+func TestComputeDelay_DefaultJitter(t *testing.T) {
+	rl := &reconnectLoop{
+		policy: types.ReconnectPolicy{
+			InitialDelay: 1 * time.Second,
+			MaxDelay:     30 * time.Second,
+			Multiplier:   2.0,
+			JitterMode:   types.JitterMode(99),
+		},
+	}
+	d := rl.computeDelay(1)
+	assert.Equal(t, 1*time.Second, d)
+}
+
 func TestIsConnectionError(t *testing.T) {
 	tests := []struct {
 		name   string

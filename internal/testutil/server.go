@@ -35,11 +35,15 @@ func NewTestServer(t *testing.T) *TestServer {
 	lis := bufconn.Listen(bufSize)
 	srv := grpc.NewServer()
 	impl := &mockKubemqService{
-		sendEventFn:        defaultSendEvent,
-		sendRequestFn:      defaultSendRequest,
-		sendResponseFn:     defaultSendResponse,
-		sendQueueMessageFn: defaultSendQueueMessage,
-		pingFn:             defaultPing,
+		sendEventFn:              defaultSendEvent,
+		sendRequestFn:            defaultSendRequest,
+		sendResponseFn:           defaultSendResponse,
+		sendQueueMessageFn:       defaultSendQueueMessage,
+		sendQueueMessagesBatchFn: defaultSendQueueMessagesBatch,
+		receiveQueueMessagesFn:   defaultReceiveQueueMessages,
+		ackAllQueueMessagesFn:    defaultAckAllQueueMessages,
+		queuesInfoFn:             defaultQueuesInfo,
+		pingFn:                   defaultPing,
 	}
 	pb.RegisterKubemqServer(srv, impl)
 
@@ -116,6 +120,34 @@ func (ts *TestServer) SetSendResponseHandler(fn func(ctx context.Context, resp *
 	ts.impl.sendResponseFn = fn
 }
 
+// SetSendQueueMessagesBatchHandler overrides the server's SendQueueMessagesBatch behavior.
+func (ts *TestServer) SetSendQueueMessagesBatchHandler(fn func(ctx context.Context, req *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error)) {
+	ts.impl.mu.Lock()
+	defer ts.impl.mu.Unlock()
+	ts.impl.sendQueueMessagesBatchFn = fn
+}
+
+// SetReceiveQueueMessagesHandler overrides the server's ReceiveQueueMessages behavior.
+func (ts *TestServer) SetReceiveQueueMessagesHandler(fn func(ctx context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error)) {
+	ts.impl.mu.Lock()
+	defer ts.impl.mu.Unlock()
+	ts.impl.receiveQueueMessagesFn = fn
+}
+
+// SetAckAllQueueMessagesHandler overrides the server's AckAllQueueMessages behavior.
+func (ts *TestServer) SetAckAllQueueMessagesHandler(fn func(ctx context.Context, req *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error)) {
+	ts.impl.mu.Lock()
+	defer ts.impl.mu.Unlock()
+	ts.impl.ackAllQueueMessagesFn = fn
+}
+
+// SetQueuesInfoHandler overrides the server's QueuesInfo behavior.
+func (ts *TestServer) SetQueuesInfoHandler(fn func(ctx context.Context, req *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error)) {
+	ts.impl.mu.Lock()
+	defer ts.impl.mu.Unlock()
+	ts.impl.queuesInfoFn = fn
+}
+
 // FailWith configures the server to return a gRPC error for all operations.
 func (ts *TestServer) FailWith(code codes.Code, msg string) {
 	err := status.Error(code, msg)
@@ -129,6 +161,18 @@ func (ts *TestServer) FailWith(code codes.Code, msg string) {
 		return nil, err
 	})
 	ts.SetSendQueueMessageHandler(func(_ context.Context, _ *pb.QueueMessage) (*pb.SendQueueMessageResult, error) {
+		return nil, err
+	})
+	ts.SetSendQueueMessagesBatchHandler(func(_ context.Context, _ *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error) {
+		return nil, err
+	})
+	ts.SetReceiveQueueMessagesHandler(func(_ context.Context, _ *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
+		return nil, err
+	})
+	ts.SetAckAllQueueMessagesHandler(func(_ context.Context, _ *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
+		return nil, err
+	})
+	ts.SetQueuesInfoHandler(func(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
 		return nil, err
 	})
 	ts.SetPingHandler(func(_ context.Context, _ *pb.Empty) (*pb.PingResult, error) {
@@ -160,11 +204,15 @@ func (ts *TestServer) RecordedRequests() []*pb.Request {
 type mockKubemqService struct {
 	mu sync.Mutex
 
-	sendEventFn        func(context.Context, *pb.Event) (*pb.Result, error)
-	sendRequestFn      func(context.Context, *pb.Request) (*pb.Response, error)
-	sendResponseFn     func(context.Context, *pb.Response) (*pb.Empty, error)
-	sendQueueMessageFn func(context.Context, *pb.QueueMessage) (*pb.SendQueueMessageResult, error)
-	pingFn             func(context.Context, *pb.Empty) (*pb.PingResult, error)
+	sendEventFn              func(context.Context, *pb.Event) (*pb.Result, error)
+	sendRequestFn            func(context.Context, *pb.Request) (*pb.Response, error)
+	sendResponseFn           func(context.Context, *pb.Response) (*pb.Empty, error)
+	sendQueueMessageFn       func(context.Context, *pb.QueueMessage) (*pb.SendQueueMessageResult, error)
+	sendQueueMessagesBatchFn func(context.Context, *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error)
+	receiveQueueMessagesFn   func(context.Context, *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error)
+	ackAllQueueMessagesFn    func(context.Context, *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error)
+	queuesInfoFn             func(context.Context, *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error)
+	pingFn                   func(context.Context, *pb.Empty) (*pb.PingResult, error)
 
 	recordedEvents   []*pb.Event
 	recordedRequests []*pb.Request
@@ -219,20 +267,29 @@ func (s *mockKubemqService) SendQueueMessage(ctx context.Context, msg *pb.QueueM
 	return fn(ctx, msg)
 }
 
-func (s *mockKubemqService) SendQueueMessagesBatch(_ context.Context, _ *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented in test server")
+func (s *mockKubemqService) SendQueueMessagesBatch(ctx context.Context, req *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error) {
+	s.mu.Lock()
+	fn := s.sendQueueMessagesBatchFn
+	s.mu.Unlock()
+	return fn(ctx, req)
 }
 
-func (s *mockKubemqService) ReceiveQueueMessages(_ context.Context, _ *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented in test server")
+func (s *mockKubemqService) ReceiveQueueMessages(ctx context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
+	s.mu.Lock()
+	fn := s.receiveQueueMessagesFn
+	s.mu.Unlock()
+	return fn(ctx, req)
 }
 
 func (s *mockKubemqService) StreamQueueMessage(_ pb.Kubemq_StreamQueueMessageServer) error {
 	return status.Error(codes.Unimplemented, "not implemented in test server")
 }
 
-func (s *mockKubemqService) AckAllQueueMessages(_ context.Context, _ *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented in test server")
+func (s *mockKubemqService) AckAllQueueMessages(ctx context.Context, req *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
+	s.mu.Lock()
+	fn := s.ackAllQueueMessagesFn
+	s.mu.Unlock()
+	return fn(ctx, req)
 }
 
 func (s *mockKubemqService) QueuesDownstream(_ pb.Kubemq_QueuesDownstreamServer) error {
@@ -243,8 +300,11 @@ func (s *mockKubemqService) QueuesUpstream(_ pb.Kubemq_QueuesUpstreamServer) err
 	return status.Error(codes.Unimplemented, "not implemented in test server")
 }
 
-func (s *mockKubemqService) QueuesInfo(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented in test server")
+func (s *mockKubemqService) QueuesInfo(ctx context.Context, req *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
+	s.mu.Lock()
+	fn := s.queuesInfoFn
+	s.mu.Unlock()
+	return fn(ctx, req)
 }
 
 func defaultSendEvent(_ context.Context, event *pb.Event) (*pb.Result, error) {
@@ -277,5 +337,51 @@ func defaultPing(_ context.Context, _ *pb.Empty) (*pb.PingResult, error) {
 		Version:             "test-1.0.0",
 		ServerStartTime:     0,
 		ServerUpTimeSeconds: 100,
+	}, nil
+}
+
+func defaultSendQueueMessagesBatch(_ context.Context, req *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error) {
+	results := make([]*pb.SendQueueMessageResult, 0, len(req.Messages))
+	for _, m := range req.Messages {
+		results = append(results, &pb.SendQueueMessageResult{
+			MessageID: m.MessageID,
+			IsError:   false,
+		})
+	}
+	return &pb.QueueMessagesBatchResponse{
+		BatchID:    req.BatchID,
+		Results:    results,
+		HaveErrors: false,
+	}, nil
+}
+
+func defaultReceiveQueueMessages(_ context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
+	return &pb.ReceiveQueueMessagesResponse{
+		RequestID:        req.RequestID,
+		Messages:         nil,
+		MessagesReceived: 0,
+		MessagesExpired:  0,
+		IsPeak:           req.IsPeak,
+		IsError:          false,
+	}, nil
+}
+
+func defaultAckAllQueueMessages(_ context.Context, req *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
+	return &pb.AckAllQueueMessagesResponse{
+		RequestID:        req.RequestID,
+		AffectedMessages: 0,
+		IsError:          false,
+	}, nil
+}
+
+func defaultQueuesInfo(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
+	return &pb.QueuesInfoResponse{
+		Info: &pb.QueuesInfo{
+			TotalQueue: 0,
+			Sent:       0,
+			Delivered:  0,
+			Waiting:    0,
+			Queues:     nil,
+		},
 	}, nil
 }

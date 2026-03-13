@@ -2,9 +2,38 @@ package kubemq
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
 )
+
+var validChannelTypes = map[string]bool{
+	ChannelTypeEvents:      true,
+	ChannelTypeEventsStore: true,
+	ChannelTypeCommands:    true,
+	ChannelTypeQueries:     true,
+	ChannelTypeQueues:      true,
+}
+
+func validateChannelType(channelType, operation string) error {
+	if channelType == "" {
+		return &KubeMQError{
+			Code:      ErrCodeValidation,
+			Message:   "channel type is required",
+			Operation: operation,
+			Cause:     ErrValidation,
+		}
+	}
+	if !validChannelTypes[channelType] {
+		return &KubeMQError{
+			Code:      ErrCodeValidation,
+			Message:   fmt.Sprintf("invalid channel type %q; must be one of: events, events_store, commands, queries, queues", channelType),
+			Operation: operation,
+			Cause:     ErrValidation,
+		}
+	}
+	return nil
+}
 
 // Channel type constants for use with CreateChannel, DeleteChannel, and ListChannels.
 const (
@@ -50,13 +79,8 @@ func (c *Client) CreateChannel(ctx context.Context, channelName, channelType str
 			Cause:     ErrValidation,
 		}
 	}
-	if channelType == "" {
-		return &KubeMQError{
-			Code:      ErrCodeValidation,
-			Message:   "channel type is required",
-			Operation: "CreateChannel",
-			Cause:     ErrValidation,
-		}
+	if err := validateChannelType(channelType, "CreateChannel"); err != nil {
+		return err
 	}
 	return c.transport.CreateChannel(ctx, &transport.CreateChannelRequest{
 		ClientID:    c.opts.clientId,
@@ -78,13 +102,8 @@ func (c *Client) DeleteChannel(ctx context.Context, channelName, channelType str
 			Cause:     ErrValidation,
 		}
 	}
-	if channelType == "" {
-		return &KubeMQError{
-			Code:      ErrCodeValidation,
-			Message:   "channel type is required",
-			Operation: "DeleteChannel",
-			Cause:     ErrValidation,
-		}
+	if err := validateChannelType(channelType, "DeleteChannel"); err != nil {
+		return err
 	}
 	return c.transport.DeleteChannel(ctx, &transport.DeleteChannelRequest{
 		ClientID:    c.opts.clientId,
@@ -98,13 +117,8 @@ func (c *Client) ListChannels(ctx context.Context, channelType, search string) (
 	if err := c.checkClosed(); err != nil {
 		return nil, err
 	}
-	if channelType == "" {
-		return nil, &KubeMQError{
-			Code:      ErrCodeValidation,
-			Message:   "channel type is required",
-			Operation: "ListChannels",
-			Cause:     ErrValidation,
-		}
+	if err := validateChannelType(channelType, "ListChannels"); err != nil {
+		return nil, err
 	}
 	result, err := c.transport.ListChannels(ctx, &transport.ListChannelsRequest{
 		ClientID:    c.opts.clientId,

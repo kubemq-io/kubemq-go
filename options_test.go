@@ -20,7 +20,7 @@ func TestGetDefaultOptions(t *testing.T) {
 
 	// v2 defaults
 	assert.Equal(t, 10*time.Second, opts.connectionTimeout)
-	assert.Equal(t, 100*1024*1024, opts.maxRecvMsgSize)
+	assert.Equal(t, 4*1024*1024, opts.maxRecvMsgSize)
 	assert.Equal(t, 100*1024*1024, opts.maxSendMsgSize)
 	assert.True(t, opts.waitForReady)
 	assert.Equal(t, 10*time.Second, opts.keepaliveTime)

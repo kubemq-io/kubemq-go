@@ -210,6 +210,24 @@ func (m *MockTransport) SubscribeToQueries(ctx context.Context, req *transport.S
 	return nil, nil
 }
 
+func (m *MockTransport) SendEventsStream(_ context.Context) (*transport.EventStreamHandle, error) {
+	resultCh := make(chan *transport.EventStreamResult, 16)
+	doneCh := make(chan struct{})
+	return &transport.EventStreamHandle{
+		Results: resultCh,
+		Done:    doneCh,
+		SendFn: func(item *transport.EventStreamItem) error {
+			if item.Store {
+				select {
+				case resultCh <- &transport.EventStreamResult{EventID: item.ID, Sent: true}:
+				default:
+				}
+			}
+			return nil
+		},
+	}, nil
+}
+
 func (m *MockTransport) QueueUpstream(_ context.Context) (*transport.QueueUpstreamHandle, error) {
 	return nil, nil
 }
@@ -330,4 +348,46 @@ func (m *MockTransport) OnListChannels(fn func(ctx context.Context, req *transpo
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.listChannelsFn = fn
+}
+
+// OnSendEventStore sets the handler for SendEventStore calls.
+func (m *MockTransport) OnSendEventStore(fn func(ctx context.Context, req *transport.SendEventStoreRequest) (*transport.SendEventStoreResult, error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sendEventStoreFn = fn
+}
+
+// OnSendResponse sets the handler for SendResponse calls.
+func (m *MockTransport) OnSendResponse(fn func(ctx context.Context, req *transport.SendResponseRequest) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sendResponseFn = fn
+}
+
+// OnSendQueueMessages sets the handler for SendQueueMessages calls.
+func (m *MockTransport) OnSendQueueMessages(fn func(ctx context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sendQueueMsgsFn = fn
+}
+
+// OnReceiveQueueMessages sets the handler for ReceiveQueueMessages calls.
+func (m *MockTransport) OnReceiveQueueMessages(fn func(ctx context.Context, req *transport.ReceiveQueueMessagesReq) (*transport.ReceiveQueueMessagesResp, error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.recvQueueMsgsFn = fn
+}
+
+// OnAckAllQueueMessages sets the handler for AckAllQueueMessages calls.
+func (m *MockTransport) OnAckAllQueueMessages(fn func(ctx context.Context, req *transport.AckAllQueueMessagesReq) (*transport.AckAllQueueMessagesResp, error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ackAllFn = fn
+}
+
+// OnQueuesInfo sets the handler for QueuesInfo calls.
+func (m *MockTransport) OnQueuesInfo(fn func(ctx context.Context, filter string) (*transport.QueuesInfoResult, error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.queuesInfoFn = fn
 }
