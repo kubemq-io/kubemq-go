@@ -109,7 +109,7 @@ func QueryToProto(req *SendQueryRequest, clientID string) *pb.Request {
 		Body:            req.Body,
 		Timeout:         int32(req.Timeout.Milliseconds()),
 		CacheKey:        req.CacheKey,
-		CacheTTL:        int32(req.CacheTTL.Milliseconds()),
+		CacheTTL:        int32(req.CacheTTL.Seconds()),
 		Tags:            req.Tags,
 		Span:            req.Span,
 	}
@@ -199,6 +199,7 @@ func QueueMessageFromProto(m *pb.QueueMessage) *QueueMessageItem {
 		item.Attributes = &QueueMessageAttributes{
 			Timestamp:         m.Attributes.Timestamp,
 			Sequence:          m.Attributes.Sequence,
+			MD5OfBody:         m.Attributes.MD5OfBody,
 			ReceiveCount:      int(m.Attributes.ReceiveCount),
 			ReRouted:          m.Attributes.ReRouted,
 			ReRoutedFromQueue: m.Attributes.ReRoutedFromQueue,
@@ -234,6 +235,10 @@ func SendQueueMessageResultFromProto(r *pb.SendQueueMessageResult) *SendQueueMes
 		DelayedTo:    r.DelayedTo,
 		IsError:      r.IsError,
 		Error:        r.Error,
+		RefChannel:   r.RefChannel,
+		RefTopic:     r.RefTopic,
+		RefPartition: r.RefPartition,
+		RefHash:      r.RefHash,
 	}
 }
 
@@ -356,6 +361,10 @@ func QueueUpstreamResponseFromProto(r *pb.QueuesUpstreamResponse) *QueueUpstream
 			DelayedTo:    res.DelayedTo,
 			IsError:      res.IsError,
 			Error:        res.Error,
+			RefChannel:   res.RefChannel,
+			RefTopic:     res.RefTopic,
+			RefPartition: res.RefPartition,
+			RefHash:      res.RefHash,
 		})
 	}
 	return &QueueUpstreamResult{

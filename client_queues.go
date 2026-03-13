@@ -104,6 +104,10 @@ func (c *Client) SendQueueMessages(ctx context.Context, msgs []*QueueMessage) ([
 			DelayedTo:    r.DelayedTo,
 			IsError:      r.IsError,
 			Error:        r.Error,
+			RefChannel:   r.RefChannel,
+			RefTopic:     r.RefTopic,
+			RefPartition: r.RefPartition,
+			RefHash:      r.RefHash,
 		})
 	}
 	return out, nil
@@ -161,6 +165,7 @@ func (c *Client) ReceiveQueueMessages(ctx context.Context, req *ReceiveQueueMess
 			msg.Attributes = &QueueMessageAttributes{
 				Timestamp:         m.Attributes.Timestamp,
 				Sequence:          m.Attributes.Sequence,
+				MD5OfBody:         m.Attributes.MD5OfBody,
 				ReceiveCount:      m.Attributes.ReceiveCount,
 				ReRouted:          m.Attributes.ReRouted,
 				ReRoutedFromQueue: m.Attributes.ReRoutedFromQueue,
@@ -269,6 +274,10 @@ func (c *Client) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error
 						DelayedTo:    ri.DelayedTo,
 						IsError:      ri.IsError,
 						Error:        ri.Error,
+						RefChannel:   ri.RefChannel,
+						RefTopic:     ri.RefTopic,
+						RefPartition: ri.RefPartition,
+						RefHash:      ri.RefHash,
 					})
 				}
 				select {
@@ -358,6 +367,7 @@ func (c *Client) QueueDownstream(ctx context.Context) (*QueueDownstreamHandle, e
 						qm.Attributes = &QueueMessageAttributes{
 							Timestamp:         m.Attributes.Timestamp,
 							Sequence:          m.Attributes.Sequence,
+							MD5OfBody:         m.Attributes.MD5OfBody,
 							ReceiveCount:      m.Attributes.ReceiveCount,
 							ReRouted:          m.Attributes.ReRouted,
 							ReRoutedFromQueue: m.Attributes.ReRoutedFromQueue,

@@ -1,8 +1,8 @@
 // Package main demonstrates Events Store features with the KubeMQ Go SDK v2.
 //
-// This example shows unary send, stream send, and subscription with different
-// start positions. Run with a KubeMQ server on localhost:50000
-// (e.g., docker run -d -p 50000:50000 kubemq/kubemq).
+// This example shows unary send, stream send, and subscription with all 6
+// start positions plus consumer groups. Run with a KubeMQ server on
+// localhost:50000 (e.g., docker run -d -p 50000:50000 kubemq/kubemq).
 package main
 
 import (
@@ -14,19 +14,10 @@ import (
 	"github.com/kubemq-io/kubemq-go/v2"
 )
 
-// All 6 Events Store start positions:
-//
-// 1. StartFromNewEvents()       — only new events published after subscription
-// 2. StartFromFirstEvent()      — replay all stored events from the beginning
-// 3. StartFromLastEvent()      — replay last event, then continue with new ones
-// 4. StartFromSequence(n)      — replay starting at sequence number n (must be > 0)
-// 5. StartFromTime(t)          — replay from specific point in time (Unix nanos)
-// 6. StartFromTimeDelta(d)     — replay from now minus duration (e.g. 1*time.Hour)
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Create a KubeMQ client
 	client, err := kubemq.NewClient(ctx,
 		kubemq.WithAddress("localhost", 50000),
 	)
@@ -38,76 +29,141 @@ func main() {
 	channel := "demo-es"
 	errHandler := func(err error) { log.Println("Subscription error:", err) }
 
-	// 1. Subscribe with StartFromFirstEvent — receive all stored + new events
-	sub, err := client.SubscribeToEventsStore(ctx, channel, "",
+	// -------------------------------------------------------------------------
+	// 1. StartFromFirstEvent — replay all stored events from the beginning
+	// -------------------------------------------------------------------------
+	sub1, err := client.SubscribeToEventsStore(ctx, channel, "",
 		kubemq.StartFromFirstEvent(),
 		kubemq.WithOnEventStoreReceive(func(e *kubemq.EventStoreReceive) {
-			fmt.Printf("[StartFromFirstEvent] seq=%d body=%s\n", e.Sequence, string(e.Body))
+			fmt.Printf("[StartFromFirst] seq=%d body=%s\n", e.Sequence, string(e.Body))
 		}),
 		kubemq.WithOnError(errHandler),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer sub.Unsubscribe()
+	defer sub1.Unsubscribe()
 
-	// 4. Subscribe with StartFromSequence(1) — receive from sequence 1 onward
-	subSeq, err := client.SubscribeToEventsStore(ctx, channel, "",
-		kubemq.StartFromSequence(1),
+	// -------------------------------------------------------------------------
+	// 2. StartFromLastEvent — start from the last stored event, then new ones
+	// -------------------------------------------------------------------------
+	sub2, err := client.SubscribeToEventsStore(ctx, channel, "",
+		kubemq.StartFromLastEvent(),
 		kubemq.WithOnEventStoreReceive(func(e *kubemq.EventStoreReceive) {
-			fmt.Printf("[StartFromSequence(1)] seq=%d body=%s\n", e.Sequence, string(e.Body))
+			fmt.Printf("[StartFromLast] seq=%d body=%s\n", e.Sequence, string(e.Body))
 		}),
 		kubemq.WithOnError(errHandler),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer subSeq.Unsubscribe()
+	defer sub2.Unsubscribe()
 
-	// 5. Subscribe with StartFromNewEvents() — only events published after subscribe
-	subNew, err := client.SubscribeToEventsStore(ctx, channel, "",
+	// -------------------------------------------------------------------------
+	// 3. StartFromNewEvents — only events published after subscription
+	// -------------------------------------------------------------------------
+	sub3, err := client.SubscribeToEventsStore(ctx, channel, "",
 		kubemq.StartFromNewEvents(),
 		kubemq.WithOnEventStoreReceive(func(e *kubemq.EventStoreReceive) {
-			fmt.Printf("[StartFromNewEvents] seq=%d body=%s\n", e.Sequence, string(e.Body))
+			fmt.Printf("[StartFromNew] seq=%d body=%s\n", e.Sequence, string(e.Body))
 		}),
 		kubemq.WithOnError(errHandler),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer subNew.Unsubscribe()
+	defer sub3.Unsubscribe()
 
-	// 2. Send event store (unary) using NewEventStore builder
+	// -------------------------------------------------------------------------
+	// 4. StartFromSequence — replay starting at sequence number 1
+	// -------------------------------------------------------------------------
+	sub4, err := client.SubscribeToEventsStore(ctx, channel, "",
+		kubemq.StartFromSequence(1),
+		kubemq.WithOnEventStoreReceive(func(e *kubemq.EventStoreReceive) {
+			fmt.Printf("[StartFromSeq(1)] seq=%d body=%s\n", e.Sequence, string(e.Body))
+		}),
+		kubemq.WithOnError(errHandler),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer sub4.Unsubscribe()
+
+	// -------------------------------------------------------------------------
+	// 5. StartFromTime — replay from a specific point in time
+	// -------------------------------------------------------------------------
+	since := time.Now().Add(-1 * time.Hour)
+	sub5, err := client.SubscribeToEventsStore(ctx, channel, "",
+		kubemq.StartFromTime(since),
+		kubemq.WithOnEventStoreReceive(func(e *kubemq.EventStoreReceive) {
+			fmt.Printf("[StartFromTime] seq=%d body=%s\n", e.Sequence, string(e.Body))
+		}),
+		kubemq.WithOnError(errHandler),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer sub5.Unsubscribe()
+
+	// -------------------------------------------------------------------------
+	// 6. StartFromTimeDelta — replay from 30 minutes ago
+	// -------------------------------------------------------------------------
+	sub6, err := client.SubscribeToEventsStore(ctx, channel, "",
+		kubemq.StartFromTimeDelta(30*time.Minute),
+		kubemq.WithOnEventStoreReceive(func(e *kubemq.EventStoreReceive) {
+			fmt.Printf("[StartFromTimeDelta] seq=%d body=%s\n", e.Sequence, string(e.Body))
+		}),
+		kubemq.WithOnError(errHandler),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer sub6.Unsubscribe()
+
+	// -------------------------------------------------------------------------
+	// 7. Subscribe with consumer group — load-balanced across group members
+	// -------------------------------------------------------------------------
+	subGroup, err := client.SubscribeToEventsStore(ctx, channel, "my-consumer-group",
+		kubemq.StartFromFirstEvent(),
+		kubemq.WithOnEventStoreReceive(func(e *kubemq.EventStoreReceive) {
+			fmt.Printf("[ConsumerGroup] seq=%d body=%s\n", e.Sequence, string(e.Body))
+		}),
+		kubemq.WithOnError(errHandler),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer subGroup.Unsubscribe()
+
+	// -------------------------------------------------------------------------
+	// Send events (unary)
+	// -------------------------------------------------------------------------
 	eventStore := kubemq.NewEventStore().
 		SetChannel(channel).
-		SetBody([]byte("data")).
+		SetBody([]byte("hello-store")).
 		SetMetadata("meta")
 	result, err := client.SendEventStore(ctx, eventStore)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Unary send: id=%s sent=%v\n", result.Id, result.Sent)
-	if result.Err != nil {
-		log.Printf("Unary send error: %v\n", result.Err)
-	}
 
-	// 3. Stream send using SendEventStoreStream
-	// Returns (*EventStoreStreamHandle, error) with Send, Results, Done, Close
+	// -------------------------------------------------------------------------
+	// Send events (stream)
+	// -------------------------------------------------------------------------
 	streamHandle, err := client.SendEventStoreStream(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer streamHandle.Close()
 
-	// Drain Results and Done in background
 	go func() {
 		for r := range streamHandle.Results {
 			fmt.Printf("Stream result: eventId=%s sent=%v err=%s\n", r.EventID, r.Sent, r.Error)
 		}
 	}()
 
-	// Send events on the stream
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		ev := kubemq.NewEventStore().
 			SetChannel(channel).
 			SetBody([]byte(fmt.Sprintf("stream-data-%d", i))).
@@ -117,8 +173,6 @@ func main() {
 		}
 	}
 
-	// Give subscribers time to receive; stream Results are drained in goroutine above
 	time.Sleep(2 * time.Second)
-
 	fmt.Println("Events Store example complete.")
 }

@@ -145,6 +145,7 @@ type QueueMessagePolicy struct {
 type QueueMessageAttributes struct {
 	Timestamp         int64
 	Sequence          uint64
+	MD5OfBody         string
 	ReceiveCount      int
 	ReRouted          bool
 	ReRoutedFromQueue string
@@ -165,6 +166,10 @@ type SendQueueMessageResultItem struct {
 	DelayedTo    int64
 	IsError      bool
 	Error        string
+	RefChannel   string
+	RefTopic     string
+	RefPartition int32
+	RefHash      string
 }
 
 // SendQueueMessagesResult is the internal result for batch queue message sends.
