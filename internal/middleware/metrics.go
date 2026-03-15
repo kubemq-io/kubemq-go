@@ -114,7 +114,7 @@ func newMetricsCollector(
 // RecordOperation records duration and message count metrics for an operation.
 func (mc *metricsCollector) RecordOperation(
 	ctx context.Context,
-	cfg SpanConfig,
+	cfg SpanConfig, //nolint:gocritic // hugeParam: value semantics kept for API consistency with StartSpan
 	duration time.Duration,
 	err error,
 ) {

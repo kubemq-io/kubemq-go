@@ -19,9 +19,7 @@ func New() string {
 	_, _ = rand.Read(bytes)
 
 	result := &UUID{}
-	for i, v := range bytes {
-		result[i] = v
-	}
+	copy(result[:], bytes)
 
 	result.setVersion(4)
 	result.setVariant()
@@ -34,7 +32,7 @@ func (u *UUID) setVersion(v byte) {
 
 func (u *UUID) setVariant() {
 	// Clear the first two bits of the byte
-	u[8] = u[8] & 0x3f
+	u[8] &= 0x3f
 	// Set the first two bits of the byte to 10
-	u[8] = u[8] | 0x80
+	u[8] |= 0x80
 }

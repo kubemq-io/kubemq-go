@@ -77,7 +77,7 @@ func TestWithTLS(t *testing.T) {
 	caPEM, _, _, _ := testGenerateCA(t)
 	dir := t.TempDir()
 	caFile := filepath.Join(dir, "ca.pem")
-	require.NoError(t, os.WriteFile(caFile, caPEM, 0600))
+	require.NoError(t, os.WriteFile(caFile, caPEM, 0o600))
 
 	opts := GetDefaultOptions()
 	WithTLS(caFile).apply(opts)
@@ -184,9 +184,9 @@ func TestOptionsValidate_MTLS_MissingKey(t *testing.T) {
 	certPEM, _ := testGenerateCert(t, ca, caKey)
 	dir := t.TempDir()
 	certFile := filepath.Join(dir, "cert.pem")
-	require.NoError(t, os.WriteFile(certFile, certPEM, 0600))
+	require.NoError(t, os.WriteFile(certFile, certPEM, 0o600))
 	caFile := filepath.Join(dir, "ca.pem")
-	require.NoError(t, os.WriteFile(caFile, caPEM, 0600))
+	require.NoError(t, os.WriteFile(caFile, caPEM, 0o600))
 
 	opts := GetDefaultOptions()
 	opts.tlsConfig = &TLSConfig{CACertFile: caFile, CertFile: certFile}
@@ -239,9 +239,9 @@ func TestOptionsValidate_TLS_ValidConfig(t *testing.T) {
 	certFile := filepath.Join(dir, "cert.pem")
 	keyFile := filepath.Join(dir, "key.pem")
 	caFile := filepath.Join(dir, "ca.pem")
-	require.NoError(t, os.WriteFile(certFile, certPEM, 0600))
-	require.NoError(t, os.WriteFile(keyFile, keyPEM, 0600))
-	require.NoError(t, os.WriteFile(caFile, caPEM, 0600))
+	require.NoError(t, os.WriteFile(certFile, certPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyFile, keyPEM, 0o600))
+	require.NoError(t, os.WriteFile(caFile, caPEM, 0o600))
 
 	opts := GetDefaultOptions()
 	opts.tlsConfig = &TLSConfig{
@@ -274,7 +274,7 @@ func TestOptionsString_WithTLS(t *testing.T) {
 	caPEM, _, _, _ := testGenerateCA(t)
 	dir := t.TempDir()
 	caFile := filepath.Join(dir, "ca.pem")
-	require.NoError(t, os.WriteFile(caFile, caPEM, 0600))
+	require.NoError(t, os.WriteFile(caFile, caPEM, 0o600))
 
 	opts := GetDefaultOptions()
 	WithTLS(caFile).apply(opts)
