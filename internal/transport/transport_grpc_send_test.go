@@ -74,63 +74,76 @@ func (s *inlineServer) SendEvent(ctx context.Context, e *pb.Event) (*pb.Result, 
 	s.mu.Unlock()
 	return fn(ctx, e)
 }
+
 func (s *inlineServer) SendEventsStream(_ pb.Kubemq_SendEventsStreamServer) error {
 	return status.Error(codes.Unimplemented, "not implemented")
 }
+
 func (s *inlineServer) SubscribeToEvents(_ *pb.Subscribe, _ pb.Kubemq_SubscribeToEventsServer) error {
 	return status.Error(codes.Unimplemented, "not implemented")
 }
+
 func (s *inlineServer) SubscribeToRequests(_ *pb.Subscribe, _ pb.Kubemq_SubscribeToRequestsServer) error {
 	return status.Error(codes.Unimplemented, "not implemented")
 }
+
 func (s *inlineServer) SendRequest(ctx context.Context, r *pb.Request) (*pb.Response, error) {
 	s.mu.Lock()
 	fn := s.sendRequestFn
 	s.mu.Unlock()
 	return fn(ctx, r)
 }
+
 func (s *inlineServer) SendResponse(ctx context.Context, r *pb.Response) (*pb.Empty, error) {
 	s.mu.Lock()
 	fn := s.sendResponseFn
 	s.mu.Unlock()
 	return fn(ctx, r)
 }
+
 func (s *inlineServer) Ping(ctx context.Context, e *pb.Empty) (*pb.PingResult, error) {
 	s.mu.Lock()
 	fn := s.pingFn
 	s.mu.Unlock()
 	return fn(ctx, e)
 }
+
 func (s *inlineServer) SendQueueMessage(ctx context.Context, m *pb.QueueMessage) (*pb.SendQueueMessageResult, error) {
 	s.mu.Lock()
 	fn := s.sendQueueMessageFn
 	s.mu.Unlock()
 	return fn(ctx, m)
 }
+
 func (s *inlineServer) SendQueueMessagesBatch(ctx context.Context, req *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error) {
 	s.mu.Lock()
 	fn := s.sendQueueMessagesBatchFn
 	s.mu.Unlock()
 	return fn(ctx, req)
 }
+
 func (s *inlineServer) ReceiveQueueMessages(ctx context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
 	s.mu.Lock()
 	fn := s.receiveQueueMessagesFn
 	s.mu.Unlock()
 	return fn(ctx, req)
 }
+
 func (s *inlineServer) StreamQueueMessage(_ pb.Kubemq_StreamQueueMessageServer) error {
 	return status.Error(codes.Unimplemented, "not implemented")
 }
+
 func (s *inlineServer) AckAllQueueMessages(ctx context.Context, req *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
 	s.mu.Lock()
 	fn := s.ackAllQueueMessagesFn
 	s.mu.Unlock()
 	return fn(ctx, req)
 }
+
 func (s *inlineServer) QueuesDownstream(_ pb.Kubemq_QueuesDownstreamServer) error {
 	return status.Error(codes.Unimplemented, "not implemented")
 }
+
 func (s *inlineServer) QueuesUpstream(_ pb.Kubemq_QueuesUpstreamServer) error {
 	return status.Error(codes.Unimplemented, "not implemented")
 }

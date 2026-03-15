@@ -170,7 +170,7 @@ func TestBuildLegacyTLSCredentials_CertFile(t *testing.T) {
 	certPEM, _ := generateSelfSignedCert(t)
 	dir := t.TempDir()
 	certFile := filepath.Join(dir, "cert.pem")
-	require.NoError(t, os.WriteFile(certFile, certPEM, 0600))
+	require.NoError(t, os.WriteFile(certFile, certPEM, 0o600))
 
 	gt, _ := newTestTransport(t)
 	gt.cfg.CertFile = certFile

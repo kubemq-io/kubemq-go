@@ -54,7 +54,7 @@ type semverTriple struct {
 
 func parseSimpleVersion(s string) *semverTriple {
 	// Strip leading 'v' if present
-	if len(s) > 0 && s[0] == 'v' {
+	if s != "" && s[0] == 'v' {
 		s = s[1:]
 	}
 	parts := strings.Split(s, ".")
@@ -62,7 +62,7 @@ func parseSimpleVersion(s string) *semverTriple {
 		return nil
 	}
 	maj, err1 := strconv.Atoi(parts[0])
-	min, err2 := strconv.Atoi(parts[1])
+	minor, err2 := strconv.Atoi(parts[1])
 	pat := 0
 	if len(parts) >= 3 {
 		// Ignore pre-release suffix (e.g., "2.4.1-beta")
@@ -78,7 +78,7 @@ func parseSimpleVersion(s string) *semverTriple {
 	if err1 != nil || err2 != nil {
 		return nil
 	}
-	return &semverTriple{maj, min, pat}
+	return &semverTriple{maj, minor, pat}
 }
 
 func versionLessThan(a, b *semverTriple) bool {

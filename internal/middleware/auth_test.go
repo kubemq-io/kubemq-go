@@ -196,7 +196,7 @@ func TestAuthInterceptor_InjectToken(t *testing.T) {
 	defer cancel()
 
 	provider := &mockProvider{token: "injected-token"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.UnaryInterceptor()
@@ -222,7 +222,7 @@ func TestAuthInterceptor_ReactiveRefresh(t *testing.T) {
 
 	callCount := atomic.Int64{}
 	provider := &mockProvider{token: "old-token"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.UnaryInterceptor()
@@ -248,7 +248,7 @@ func TestAuthInterceptor_ReactiveRefresh_FailsAfterRetry(t *testing.T) {
 	defer cancel()
 
 	provider := &mockProvider{token: "bad-token"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.UnaryInterceptor()
@@ -273,7 +273,7 @@ func TestAuthInterceptor_StreamInjectToken(t *testing.T) {
 	defer cancel()
 
 	provider := &mockProvider{token: "stream-token"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.StreamInterceptor()
@@ -301,7 +301,7 @@ func TestAuthInterceptor_ProactiveRefresh(t *testing.T) {
 		token:     "short-lived",
 		expiresAt: time.Now().Add(200 * time.Millisecond),
 	}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.UnaryInterceptor()
