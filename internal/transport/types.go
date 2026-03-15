@@ -357,7 +357,7 @@ type Config struct {
 	CertFile             string
 	CertData             string
 	ServerOverrideDomain string
-	AuthToken            string
+	AuthToken            string //nolint:gosec // G117: field name is intentional; not a hardcoded credential
 	ClientID             string
 	MaxSendSize          int
 	MaxReceiveSize       int

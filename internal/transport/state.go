@@ -83,7 +83,7 @@ func (sm *stateMachine) transition(to types.ConnectionState) {
 			return
 		}
 
-		if sm.state.CompareAndSwap(int32(from), int32(to)) {
+		if sm.state.CompareAndSwap(int32(from), int32(to)) { //nolint:gosec // G115: ConnectionState enum values fit int32
 			sm.logger.Info("connection state changed",
 				"from", from.String(),
 				"to", to.String(),

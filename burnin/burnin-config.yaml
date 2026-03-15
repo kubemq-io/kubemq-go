@@ -1,0 +1,87 @@
+version: 1
+
+broker:
+  address: "localhost:50000"
+  client_id_prefix: "burnin-go"
+
+mode: soak
+duration: 1h
+run_id: ""
+warmup_duration: ""
+
+rates:
+  events: 100
+  events_store: 100
+  queue_stream: 50
+  queue_simple: 50
+  commands: 20
+  queries: 20
+
+concurrency:
+  events_producers: 1
+  events_consumers: 1
+  events_consumer_group: false
+  events_store_producers: 1
+  events_store_consumers: 1
+  events_store_consumer_group: false
+  queue_stream_producers: 1
+  queue_stream_consumers: 1
+  queue_simple_producers: 1
+  queue_simple_consumers: 1
+  commands_senders: 1
+  commands_responders: 1
+  queries_senders: 1
+  queries_responders: 1
+
+queue:
+  poll_max_messages: 10
+  poll_wait_timeout_seconds: 5
+  visibility_seconds: 30
+  auto_ack: false
+  max_depth: 1000000
+
+rpc:
+  timeout_ms: 5000
+
+message:
+  size_mode: fixed
+  size_bytes: 1024
+  size_distribution: "256:80,4096:15,65536:5"
+  reorder_window: 10000
+
+metrics:
+  port: 8888
+  report_interval: 30s
+
+logging:
+  format: text
+  level: info
+
+forced_disconnect:
+  interval: "0"
+  duration: 5s
+
+recovery:
+  reconnect_interval: 1s
+  reconnect_max_interval: 30s
+  reconnect_multiplier: 2.0
+
+shutdown:
+  drain_timeout_seconds: 10
+  cleanup_channels: true
+
+output:
+  report_file: ""
+  sdk_version: ""
+
+thresholds:
+  max_loss_pct: 0.0
+  max_events_loss_pct: 5.0
+  max_duplication_pct: 0.1
+  max_p99_latency_ms: 1000
+  max_p999_latency_ms: 5000
+  min_throughput_pct: 90
+  max_error_rate_pct: 1.0
+  max_memory_growth_factor: 2.0
+  max_downtime_pct: 10
+  max_duration: 168h

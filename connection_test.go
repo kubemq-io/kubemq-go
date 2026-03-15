@@ -35,7 +35,7 @@ func TestDefaultReconnectPolicy(t *testing.T) {
 }
 
 func TestReconnectPolicyTypeAlias(t *testing.T) {
-	var p ReconnectPolicy = types.DefaultReconnectPolicy()
+	p := types.DefaultReconnectPolicy()
 	assert.Equal(t, 0, p.MaxAttempts)
 }
 

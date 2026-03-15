@@ -17,13 +17,11 @@ linters:
     - staticcheck     # comprehensive static analysis
     - unused          # unused code
     - ineffassign     # ineffectual assignments
-    - gosimple        # simplification suggestions
 
     # Tier 2 — code quality
     - gocritic        # opinionated style/performance checks
     - revive          # extensible linter (replaces golint)
     - misspell        # common English misspellings
-    - gofumpt         # stricter gofmt
     - nolintlint      # ill-formed //nolint directives
     - errorlint       # correct use of errors.Is/As and %w
     - gosec           # security issues
@@ -31,101 +29,111 @@ linters:
     # Tier 3 — import discipline
     - depguard        # enforce import restrictions (layer boundaries)
 
-linters-settings:
-  depguard:
+  settings:
+    depguard:
+      rules:
+        Main:
+          list-mode: lax
+          deny:
+            - pkg: "github.com/gogo/protobuf"
+              desc: "gogo/protobuf is removed in v2."
+            - pkg: "go.opencensus.io"
+              desc: "OpenCensus is removed in v2. Use OpenTelemetry."
+            - pkg: "github.com/go-resty/resty"
+              desc: "REST transport is removed in v2."
+            - pkg: "github.com/gorilla/websocket"
+              desc: "WebSocket transport is removed in v2."
+            - pkg: "go.uber.org/atomic"
+              desc: "Use sync/atomic from stdlib."
+        public-api-layer:
+          list-mode: lax
+          files:
+            - "!**/internal/**"
+          deny:
+            - pkg: "google.golang.org/grpc"
+              desc: "Public API layer must not import gRPC directly. Use internal/transport/."
+            - pkg: "google.golang.org/grpc/**"
+              desc: "Public API layer must not import gRPC sub-packages."
+            - pkg: "google.golang.org/protobuf/**"
+              desc: "Public API layer must not import protobuf directly."
+            - pkg: "github.com/kubemq-io/protobuf/**"
+              desc: "Public API layer must not import KubeMQ proto package."
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+
+    gosec:
+      excludes:
+        - G104  # Handled by errcheck
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - "checkPrivateReceivers"
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: increment-decrement
+        - name: var-naming
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: indent-error-flow
+        - name: superfluous-else
+        - name: unreachable-code
+
+  exclusions:
+    paths:
+      - vendor
+      - clients
+      - examples
+      - ".*\\.pb\\.go$"
+      - ".*_gen\\.go$"
     rules:
-      public-api-layer:
-        files:
-          - "!**/internal/**"
-        deny:
-          - pkg: "google.golang.org/grpc"
-            desc: "Public API layer must not import gRPC directly. Use internal/transport/."
-          - pkg: "google.golang.org/grpc/**"
-            desc: "Public API layer must not import gRPC sub-packages."
-          - pkg: "google.golang.org/protobuf/**"
-            desc: "Public API layer must not import protobuf directly."
-          - pkg: "github.com/kubemq-io/protobuf/**"
-            desc: "Public API layer must not import KubeMQ proto package."
-          - pkg: "github.com/gogo/protobuf/**"
-            desc: "gogo/protobuf is removed in v2."
-          - pkg: "go.opencensus.io/**"
-            desc: "OpenCensus is removed in v2. Use OpenTelemetry."
-          - pkg: "github.com/go-resty/resty/**"
-            desc: "REST transport is removed in v2."
-          - pkg: "github.com/gorilla/websocket"
-            desc: "WebSocket transport is removed in v2."
-          - pkg: "go.uber.org/atomic"
-            desc: "Use sync/atomic from stdlib."
-
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-
-  errorlint:
-    errorf: true
-    asserts: true
-    comparison: true
-
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-
-  gofumpt:
-    extra-rules: true
-
-  gosec:
-    excludes:
-      - G104  # Handled by errcheck
-
-  nolintlint:
-    require-explanation: true
-    require-specific: true
-
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - "checkPrivateReceivers"
-      - name: blank-imports
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: increment-decrement
-      - name: var-naming
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: indent-error-flow
-      - name: superfluous-else
-      - name: unreachable-code
+      - path: "_test\\.go"
+        linters:
+          - errcheck
+          - gosec
+      - path: "internal/testutil/"
+        linters:
+          - errcheck
+    generated: lax
 
 issues:
-  exclude-dirs:
-    - vendor
-    - clients
-    - examples
-  exclude-files:
-    - ".*\\.pb\\.go$"
-    - ".*_gen\\.go$"
-  exclude-rules:
-    - path: "_test\\.go"
-      linters:
-        - errcheck
-        - gosec
-    - path: "internal/testutil/"
-      linters:
-        - errcheck
   max-issues-per-linter: 0
   max-same-issues: 0
 
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      extra-rules: true
+
 output:
   formats:
-    - format: colored-line-number
-  sort-results: true
+    text:
+      path: stdout
   sort-order:
     - linter
     - file

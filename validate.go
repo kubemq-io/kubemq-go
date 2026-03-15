@@ -98,7 +98,7 @@ func validateContent(metadata string, body []byte) error {
 	return nil
 }
 
-func validateQueueReceive(maxMsgs int32, waitSec int32) error {
+func validateQueueReceive(maxMsgs, waitSec int32) error {
 	if maxMsgs < 1 || maxMsgs > 1024 {
 		return &KubeMQError{
 			Code:    ErrCodeValidation,

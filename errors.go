@@ -60,7 +60,7 @@ var (
 var errorSuggestions = types.ErrorSuggestions
 
 // ClassifyGRPCCode maps a gRPC status code to an ErrorCategory and ErrorCode.
-func ClassifyGRPCCode(code grpccodes.Code) (ErrorCategory, ErrorCode) {
+func ClassifyGRPCCode(code grpccodes.Code) (cat ErrorCategory, ec ErrorCode) {
 	return types.ClassifyGRPCCode(code)
 }
 
@@ -205,7 +205,9 @@ func (sr *streamReconnector) ackMessage(id string) {
 func (sr *streamReconnector) unacknowledgedIDs() []string {
 	var ids []string
 	sr.inFlight.Range(func(key, _ any) bool {
-		ids = append(ids, key.(string))
+		if id, ok := key.(string); ok {
+			ids = append(ids, id)
+		}
 		return true
 	})
 	return ids

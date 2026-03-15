@@ -776,9 +776,8 @@ func TestQueueUpstream_Reconnection(t *testing.T) {
 		require.NotNil(t, result)
 		assert.Equal(t, "req-after-reconnect", result.RefRequestID)
 	case err := <-handle.Errors:
-		if err != nil && err.Error() != "" {
-			// drain reconnecting errors - not fatal
-		}
+		// drain reconnecting errors - not fatal
+		_ = err
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for result after reconnection")
 	}
@@ -913,9 +912,8 @@ func TestQueueDownstream_ContextCancelledDuringReconnect(t *testing.T) {
 	timeout := time.After(3 * time.Second)
 	select {
 	case _, ok := <-handle.Messages:
-		if !ok {
-			// channel closed, expected
-		}
+		// channel closed is expected; open means a stale message arrived — both are acceptable
+		_ = ok
 	case <-timeout:
 		t.Fatal("timed out waiting for downstream to exit")
 	}

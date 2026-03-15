@@ -19,7 +19,7 @@ type fullTestLogger struct {
 	testLogger
 }
 
-func (fullTestLogger) Debug(string, ...any) {}
+func (*fullTestLogger) Debug(string, ...any) {}
 
 func startBufconnServer(t *testing.T) (*bufconn.Listener, *inlineServer) {
 	t.Helper()
@@ -207,7 +207,7 @@ func TestNewGRPC_WithLogger(t *testing.T) {
 		cfg.Logger = &fullTestLogger{}
 	})
 	require.NoError(t, err)
-	defer gt.Close()
+	t.Cleanup(func() { _ = gt.Close() })
 }
 
 func TestNewGRPC_AllOperations(t *testing.T) {
@@ -264,5 +264,4 @@ func TestNewGRPC_AllOperations(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, uint64(5), ackResp.AffectedMessages)
-
 }

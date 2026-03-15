@@ -112,7 +112,7 @@ type authInterceptor struct {
 
 // NewAuthInterceptor creates an auth interceptor with token caching and
 // proactive refresh. The interceptor's lifecycle is tied to clientCtx.
-func NewAuthInterceptor(provider types.CredentialProvider, logger types.Logger, clientCtx context.Context) *authInterceptor {
+func NewAuthInterceptor(clientCtx context.Context, provider types.CredentialProvider, logger types.Logger) *authInterceptor {
 	ai := &authInterceptor{
 		cache:  newTokenCache(provider, logger),
 		logger: logger,
@@ -134,8 +134,8 @@ func (*authInterceptor) Name() string { return "auth" }
 // token and handles reactive refresh on UNAUTHENTICATED.
 func (a *authInterceptor) UnaryInterceptor() grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any,
-		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-
+		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
+	) error {
 		token, err := a.cache.getToken(ctx)
 		if err != nil {
 			return err
@@ -160,8 +160,8 @@ func (a *authInterceptor) UnaryInterceptor() grpc.UnaryClientInterceptor {
 // token and handles reactive refresh on UNAUTHENTICATED.
 func (a *authInterceptor) StreamInterceptor() grpc.StreamClientInterceptor {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn,
-		method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-
+		method string, streamer grpc.Streamer, opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
 		token, err := a.cache.getToken(ctx)
 		if err != nil {
 			return nil, err
@@ -187,8 +187,8 @@ func (a *authInterceptor) StreamInterceptor() grpc.StreamClientInterceptor {
 }
 
 func (a *authInterceptor) handleUnauthenticated(ctx context.Context, method string, req, reply any,
-	cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-
+	cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
+) error {
 	a.cache.invalidate()
 
 	token, err := a.cache.getToken(ctx)

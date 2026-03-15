@@ -79,7 +79,7 @@ func generateSelfSignedCert(t *testing.T) (certPEM, keyPEM []byte) {
 	keyDER, err := x509.MarshalECPrivateKey(key)
 	require.NoError(t, err)
 	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-	return
+	return certPEM, keyPEM
 }
 
 func TestMakeFileReloaderWithLogging_Success(t *testing.T) {
@@ -87,8 +87,8 @@ func TestMakeFileReloaderWithLogging_Success(t *testing.T) {
 	dir := t.TempDir()
 	certFile := filepath.Join(dir, "cert.pem")
 	keyFile := filepath.Join(dir, "key.pem")
-	require.NoError(t, os.WriteFile(certFile, certPEM, 0600))
-	require.NoError(t, os.WriteFile(keyFile, keyPEM, 0600))
+	require.NoError(t, os.WriteFile(certFile, certPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyFile, keyPEM, 0o600))
 
 	log := &testLogger{}
 	reloader := makeFileReloaderWithLogging(certFile, keyFile, log)

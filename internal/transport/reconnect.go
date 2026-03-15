@@ -151,13 +151,13 @@ func (r *reconnectLoop) computeDelay(attempt int) time.Duration {
 		if int64(base) <= 0 {
 			return 0
 		}
-		return time.Duration(rand.Int64N(int64(base) + 1))
+		return time.Duration(rand.Int64N(int64(base) + 1)) //nolint:gosec // G404: jitter for reconnect backoff does not need cryptographic randomness
 	case types.JitterEqual:
 		half := int64(base) / 2
 		if half <= 0 {
 			return time.Duration(int64(base))
 		}
-		return time.Duration(half + rand.Int64N(half+1))
+		return time.Duration(half + rand.Int64N(half+1)) //nolint:gosec // G404: jitter for reconnect backoff does not need cryptographic randomness
 	case types.JitterNone:
 		return time.Duration(int64(base))
 	default:

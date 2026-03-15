@@ -107,7 +107,7 @@ type SpanConfig struct {
 // StartSpan creates and starts an OTel span for the given operation.
 // Returns the enriched context and a finisher function that must be called
 // with the operation error (or nil) to end the span and record metrics.
-func (o *OTelInterceptor) StartSpan(ctx context.Context, cfg SpanConfig) (context.Context, func(error)) {
+func (o *OTelInterceptor) StartSpan(ctx context.Context, cfg SpanConfig) (context.Context, func(error)) { //nolint:gocritic // hugeParam: value semantics kept to avoid requiring callers to allocate SpanConfig on heap
 	spanName := fmt.Sprintf("%s %s", cfg.Operation, cfg.Channel)
 
 	attrs := []attribute.KeyValue{

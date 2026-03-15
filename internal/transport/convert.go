@@ -77,7 +77,7 @@ func CommandToProto(req *SendCommandRequest, clientID string) *pb.Request {
 		Channel:         req.Channel,
 		Metadata:        req.Metadata,
 		Body:            req.Body,
-		Timeout:         int32(req.Timeout.Milliseconds()),
+		Timeout:         int32(req.Timeout.Milliseconds()), //nolint:gosec // G115: timeout in ms fits int32 (max ~24 days)
 		Tags:            req.Tags,
 		Span:            req.Span,
 	}
@@ -107,7 +107,7 @@ func QueryToProto(req *SendQueryRequest, clientID string) *pb.Request {
 		Channel:         req.Channel,
 		Metadata:        req.Metadata,
 		Body:            req.Body,
-		Timeout:         int32(req.Timeout.Milliseconds()),
+		Timeout:         int32(req.Timeout.Milliseconds()), //nolint:gosec // G115: timeout in ms fits int32 (max ~24 days)
 		CacheKey:        req.CacheKey,
 		CacheTTL:        int32(req.CacheTTL.Seconds()),
 		Tags:            req.Tags,
@@ -165,9 +165,9 @@ func QueueMessageToProto(m *QueueMessageItem, clientID string) *pb.QueueMessage 
 	}
 	if m.Policy != nil {
 		msg.Policy = &pb.QueueMessagePolicy{
-			ExpirationSeconds: int32(m.Policy.ExpirationSeconds),
-			DelaySeconds:      int32(m.Policy.DelaySeconds),
-			MaxReceiveCount:   int32(m.Policy.MaxReceiveCount),
+			ExpirationSeconds: int32(m.Policy.ExpirationSeconds), //nolint:gosec // G115: bounded policy values fit int32
+			DelaySeconds:      int32(m.Policy.DelaySeconds),      //nolint:gosec // G115: bounded policy values fit int32
+			MaxReceiveCount:   int32(m.Policy.MaxReceiveCount),   //nolint:gosec // G115: bounded policy values fit int32
 			MaxReceiveQueue:   m.Policy.MaxReceiveQueue,
 		}
 	}

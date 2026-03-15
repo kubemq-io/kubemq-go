@@ -84,7 +84,7 @@ type grpcTransport struct {
 
 // NewGRPC creates a new gRPC transport and establishes the initial connection.
 // The connection is established before returning; use context for cancellation/timeout.
-func NewGRPC(ctx context.Context, cfg Config) (*grpcTransport, error) {
+func NewGRPC(ctx context.Context, cfg Config) (*grpcTransport, error) { //nolint:gocritic // hugeParam: value semantics intentional — cfg is mutated for defaults without affecting caller
 	if cfg.MaxSendSize <= 0 {
 		cfg.MaxSendSize = defaultMaxSendSize
 	}
@@ -257,8 +257,11 @@ func (t *grpcTransport) Close() error {
 	}
 
 	t.closed.Store(true)
+	// Acquire and release the in-flight write-lock as a memory barrier: any
+	// goroutine currently inside enterOperation (which holds a read-lock) must
+	// finish before we proceed to drainInFlight.
 	t.inFlight.mu.Lock()
-	t.inFlight.mu.Unlock()
+	t.inFlight.mu.Unlock() //nolint:staticcheck,gocritic // SA2001/badLock: intentional empty critical section used as a synchronisation barrier
 
 	t.reconnect.flushBuffer()
 
@@ -408,7 +411,8 @@ func (t *grpcTransport) buildDialOptions(clientCtx context.Context) []grpc.DialO
 		t.keepalive.dialOption(),
 	}
 
-	if t.cfg.TLSConfig != nil || t.cfg.InsecureSkipVerify {
+	switch {
+	case t.cfg.TLSConfig != nil || t.cfg.InsecureSkipVerify:
 		tlsCfg, err := buildTLSConfigWithLogger(t.cfg.TLSConfig, t.cfg.InsecureSkipVerify, t.logger)
 		if err != nil {
 			t.logger.Error("TLS setup failed, falling back to insecure", "error", err)
@@ -416,7 +420,7 @@ func (t *grpcTransport) buildDialOptions(clientCtx context.Context) []grpc.DialO
 		} else {
 			connOptions = append(connOptions, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
 		}
-	} else if t.cfg.IsSecured {
+	case t.cfg.IsSecured:
 		tlsCreds, err := t.buildLegacyTLSCredentials()
 		if err != nil {
 			t.logger.Error("TLS setup failed, falling back to insecure", "error", err)
@@ -424,7 +428,7 @@ func (t *grpcTransport) buildDialOptions(clientCtx context.Context) []grpc.DialO
 		} else {
 			connOptions = append(connOptions, grpc.WithTransportCredentials(tlsCreds))
 		}
-	} else {
+	default:
 		connOptions = append(connOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
@@ -442,13 +446,13 @@ func (t *grpcTransport) buildDialOptions(clientCtx context.Context) []grpc.DialO
 	}
 
 	if t.cfg.CredentialProvider != nil {
-		authInt := middleware.NewAuthInterceptor(t.cfg.CredentialProvider, t.cfg.Logger, clientCtx)
+		authInt := middleware.NewAuthInterceptor(clientCtx, t.cfg.CredentialProvider, t.cfg.Logger)
 		t.authClose = authInt.Close
 		unaryInterceptors = append([]grpc.UnaryClientInterceptor{authInt.UnaryInterceptor()}, unaryInterceptors...)
 		streamInterceptors = append([]grpc.StreamClientInterceptor{authInt.StreamInterceptor()}, streamInterceptors...)
 	} else if t.cfg.AuthToken != "" {
 		provider := types.NewStaticTokenProvider(t.cfg.AuthToken)
-		authInt := middleware.NewAuthInterceptor(provider, t.cfg.Logger, clientCtx)
+		authInt := middleware.NewAuthInterceptor(clientCtx, provider, t.cfg.Logger)
 		t.authClose = authInt.Close
 		unaryInterceptors = append([]grpc.UnaryClientInterceptor{authInt.UnaryInterceptor()}, unaryInterceptors...)
 		streamInterceptors = append([]grpc.StreamClientInterceptor{authInt.StreamInterceptor()}, streamInterceptors...)
@@ -1050,7 +1054,7 @@ func (t *grpcTransport) recvLoop(ctx context.Context, stream recvStream, subType
 				item := EventStoreReceiveFromProto(e)
 				msg = item
 				if item.Sequence > 0 {
-					t.subs.updateLastSeq(subID, int64(item.Sequence))
+					t.subs.updateLastSeq(subID, int64(item.Sequence)) //nolint:gosec // G115: sequence numbers are non-negative and fit int64
 				}
 			}
 		case pb.Subscribe_Commands:
@@ -1336,7 +1340,7 @@ func (t *grpcTransport) CreateChannel(ctx context.Context, req *CreateChannelReq
 		ClientID:        firstNonEmpty(req.ClientID, t.cfg.ClientID),
 		Channel:         requestChannel,
 		Metadata:        "create-channel",
-		Timeout:         int32(defaultRPCTimeout.Milliseconds()),
+		Timeout:         int32(defaultRPCTimeout.Milliseconds()), //nolint:gosec // G115: RPC timeout in ms fits int32
 		Tags: map[string]string{
 			"channel_type": req.ChannelType,
 			"channel":      req.Channel,
@@ -1372,7 +1376,7 @@ func (t *grpcTransport) DeleteChannel(ctx context.Context, req *DeleteChannelReq
 		ClientID:        firstNonEmpty(req.ClientID, t.cfg.ClientID),
 		Channel:         requestChannel,
 		Metadata:        "delete-channel",
-		Timeout:         int32(defaultRPCTimeout.Milliseconds()),
+		Timeout:         int32(defaultRPCTimeout.Milliseconds()), //nolint:gosec // G115: RPC timeout in ms fits int32
 		Tags: map[string]string{
 			"channel_type": req.ChannelType,
 			"channel":      req.Channel,
@@ -1423,7 +1427,7 @@ func (t *grpcTransport) ListChannels(ctx context.Context, req *ListChannelsReque
 			ClientID:        firstNonEmpty(req.ClientID, t.cfg.ClientID),
 			Channel:         requestChannel,
 			Metadata:        "list-channels",
-			Timeout:         int32(defaultRPCTimeout.Milliseconds()),
+			Timeout:         int32(defaultRPCTimeout.Milliseconds()), //nolint:gosec // G115: RPC timeout in ms fits int32
 			Tags: map[string]string{
 				"channel_type": req.ChannelType,
 				"client_id":    firstNonEmpty(req.ClientID, t.cfg.ClientID),

@@ -56,12 +56,6 @@ func (m *mockRecvStream) close() {
 	}
 }
 
-func (m *mockRecvStream) setError(err error) {
-	m.mu.Lock()
-	m.errOnce = err
-	m.mu.Unlock()
-}
-
 // --- Test: receiveBufferSize Config defaults ---
 
 func TestReceiveBufferSizeConfigDefault(t *testing.T) {

@@ -36,7 +36,7 @@ func TestAuthInterceptor_StreamInterceptor_Success(t *testing.T) {
 	defer cancel()
 
 	provider := &mockProvider{token: "stream-success-token"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.StreamInterceptor()
@@ -63,7 +63,7 @@ func TestAuthInterceptor_StreamInterceptor_AuthError_Refresh(t *testing.T) {
 
 	callCount := atomic.Int64{}
 	provider := &mockProvider{token: "old-stream-token"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.StreamInterceptor()
@@ -96,7 +96,7 @@ func TestAuthInterceptor_StreamInterceptor_NonAuthError(t *testing.T) {
 	defer cancel()
 
 	provider := &mockProvider{token: "token"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.StreamInterceptor()
@@ -122,7 +122,7 @@ func TestAuthInterceptor_HandleUnauthenticated_RetryNonAuthError(t *testing.T) {
 
 	callCount := atomic.Int64{}
 	provider := &mockProvider{token: "token"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.UnaryInterceptor()
@@ -151,7 +151,7 @@ func TestScheduleProactiveRefresh_ZeroExpiry(t *testing.T) {
 	defer cancel()
 
 	provider := &mockProvider{token: "t"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	ai.scheduleProactiveRefresh(time.Time{})
@@ -163,7 +163,7 @@ func TestScheduleProactiveRefresh_ExpiredToken(t *testing.T) {
 	defer cancel()
 
 	provider := &mockProvider{token: "t"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	ai.scheduleProactiveRefresh(time.Now().Add(-1 * time.Hour))
@@ -175,7 +175,7 @@ func TestScheduleProactiveRefresh_LargeWindow(t *testing.T) {
 	defer cancel()
 
 	provider := &mockProvider{token: "t"}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	// lifetime = 600s → window = 60s → clamped to 30s
@@ -191,7 +191,7 @@ func TestProactiveRefreshLoop_TokenRefreshError(t *testing.T) {
 		token:     "initial-token",
 		expiresAt: time.Now().Add(100 * time.Millisecond),
 	}
-	ai := NewAuthInterceptor(provider, log, ctx)
+	ai := NewAuthInterceptor(ctx, provider, log)
 	defer ai.Close()
 
 	interceptor := ai.UnaryInterceptor()

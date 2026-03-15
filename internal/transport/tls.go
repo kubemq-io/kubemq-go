@@ -14,7 +14,7 @@ import (
 func buildTLSConfig(cfg *types.TLSConfig, skipVerify bool) (*tls.Config, error) {
 	tlsCfg := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: skipVerify,
+		InsecureSkipVerify: skipVerify, //nolint:gosec // G402: user-controlled option; documented as insecure
 	}
 
 	if cfg == nil {
@@ -51,7 +51,7 @@ func buildTLSConfig(cfg *types.TLSConfig, skipVerify bool) (*tls.Config, error) 
 func buildTLSConfigWithLogger(cfg *types.TLSConfig, skipVerify bool, log logger) (*tls.Config, error) {
 	tlsCfg := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: skipVerify,
+		InsecureSkipVerify: skipVerify, //nolint:gosec // G402: user-controlled option; documented as insecure
 	}
 
 	if cfg == nil {

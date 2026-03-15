@@ -119,9 +119,9 @@ func (ri *retryInterceptor) backoff(attempt int) time.Duration {
 	}
 	switch ri.policy.JitterMode {
 	case types.JitterFull:
-		delay = rand.Float64() * delay //nolint:gosec
+		delay = rand.Float64() * delay //nolint:gosec // G404: jitter for backoff does not need cryptographic randomness
 	case types.JitterEqual:
-		delay = delay/2 + rand.Float64()*(delay/2) //nolint:gosec
+		delay = delay/2 + rand.Float64()*(delay/2) //nolint:gosec // G404: jitter for backoff does not need cryptographic randomness
 	case types.JitterNone:
 		// deterministic
 	}
