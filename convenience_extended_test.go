@@ -2,6 +2,7 @@ package kubemq
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -49,14 +50,9 @@ func TestPublishEventStore_Success(t *testing.T) {
 
 func TestSendQueueMessageSimple_Success(t *testing.T) {
 	c, mt := newConvenienceTestClient(t)
-	mt.OnSendQueueMessages(func(_ context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
-		require.Len(t, req.Messages, 1)
-		assert.Equal(t, "q-ch", req.Messages[0].Channel)
-		return &transport.SendQueueMessagesResult{
-			Results: []*transport.SendQueueMessageResultItem{
-				{MessageID: "qm-1", SentAt: 123},
-			},
-		}, nil
+	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+		assert.Equal(t, "q-ch", req.Channel)
+		return &transport.SendQueueMessageResultItem{MessageID: "qm-1", SentAt: 123}, nil
 	})
 	result, err := c.SendQueueMessageSimple(context.Background(), "q-ch", []byte("data"))
 	require.NoError(t, err)
@@ -168,19 +164,13 @@ func TestPublishEventStore_WithOptions(t *testing.T) {
 
 func TestSendQueueMessageSimple_WithOptions(t *testing.T) {
 	c, mt := newConvenienceTestClient(t)
-	mt.OnSendQueueMessages(func(_ context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
-		require.Len(t, req.Messages, 1)
-		msg := req.Messages[0]
-		assert.Equal(t, "q-ch", msg.Channel)
-		assert.Equal(t, 30, msg.Policy.ExpirationSeconds)
-		assert.Equal(t, 5, msg.Policy.DelaySeconds)
-		assert.Equal(t, 3, msg.Policy.MaxReceiveCount)
-		assert.Equal(t, "dlq", msg.Policy.MaxReceiveQueue)
-		return &transport.SendQueueMessagesResult{
-			Results: []*transport.SendQueueMessageResultItem{
-				{MessageID: "qm-1", SentAt: 123},
-			},
-		}, nil
+	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+		assert.Equal(t, "q-ch", req.Channel)
+		assert.Equal(t, 30, req.Policy.ExpirationSeconds)
+		assert.Equal(t, 5, req.Policy.DelaySeconds)
+		assert.Equal(t, 3, req.Policy.MaxReceiveCount)
+		assert.Equal(t, "dlq", req.Policy.MaxReceiveQueue)
+		return &transport.SendQueueMessageResultItem{MessageID: "qm-1", SentAt: 123}, nil
 	})
 	result, err := c.SendQueueMessageSimple(context.Background(), "q-ch", []byte("data"),
 		WithExpiration(30),
@@ -209,4 +199,77 @@ func TestPublishOption_NilFn(t *testing.T) {
 	es := &EventStore{}
 	opt.applyPublish(e)
 	opt.applyPublishStore(es)
+}
+
+func TestParseAddress_EmptyString(t *testing.T) {
+	_, _, err := parseAddress("")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "address is required")
+}
+
+func TestParseAddress_MissingPort(t *testing.T) {
+	_, _, err := parseAddress("localhost")
+	assert.Error(t, err)
+}
+
+func TestParseAddress_EmptyHost(t *testing.T) {
+	_, _, err := parseAddress(":50000")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "host is required")
+}
+
+func TestParseAddress_PortTooHigh(t *testing.T) {
+	_, _, err := parseAddress("localhost:70000")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "port must be between")
+}
+
+func TestParseAddress_PortZero(t *testing.T) {
+	_, _, err := parseAddress("localhost:0")
+	assert.Error(t, err)
+}
+
+func TestPublishEvent_ValidationError(t *testing.T) {
+	c, _ := newConvenienceTestClient(t)
+	err := c.PublishEvent(context.Background(), "", []byte("body"))
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Equal(t, ErrCodeValidation, kErr.Code)
+}
+
+func TestPublishEventStore_ValidationError(t *testing.T) {
+	c, _ := newConvenienceTestClient(t)
+	_, err := c.PublishEventStore(context.Background(), "", []byte("body"))
+	require.Error(t, err)
+}
+
+func TestSendQueueMessageSimple_ValidationError(t *testing.T) {
+	c, _ := newConvenienceTestClient(t)
+	_, err := c.SendQueueMessageSimple(context.Background(), "", []byte("body"))
+	require.Error(t, err)
+}
+
+func TestSendCommandSimple_ValidationError(t *testing.T) {
+	c, _ := newConvenienceTestClient(t)
+	_, err := c.SendCommandSimple(context.Background(), "", []byte("body"), 10*time.Second)
+	require.Error(t, err)
+}
+
+func TestSendQuerySimple_ValidationError(t *testing.T) {
+	c, _ := newConvenienceTestClient(t)
+	_, err := c.SendQuerySimple(context.Background(), "", []byte("body"), 10*time.Second)
+	require.Error(t, err)
+}
+
+func TestSendCommandSimple_TimeoutZero(t *testing.T) {
+	c, _ := newConvenienceTestClient(t)
+	_, err := c.SendCommandSimple(context.Background(), "cmd-ch", []byte("body"), 0)
+	require.Error(t, err)
+}
+
+func TestSendQuerySimple_TimeoutZero(t *testing.T) {
+	c, _ := newConvenienceTestClient(t)
+	_, err := c.SendQuerySimple(context.Background(), "q-ch", []byte("body"), 0)
+	require.Error(t, err)
 }

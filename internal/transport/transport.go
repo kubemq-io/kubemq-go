@@ -30,10 +30,10 @@ type Transport interface {
 	SendResponse(ctx context.Context, req *SendResponseRequest) error
 
 	// Queue operations
+	SendQueueMessage(ctx context.Context, req *QueueMessageItem) (*SendQueueMessageResultItem, error)
 	SendQueueMessages(ctx context.Context, req *SendQueueMessagesRequest) (*SendQueueMessagesResult, error)
 	ReceiveQueueMessages(ctx context.Context, req *ReceiveQueueMessagesReq) (*ReceiveQueueMessagesResp, error)
 	AckAllQueueMessages(ctx context.Context, req *AckAllQueueMessagesReq) (*AckAllQueueMessagesResp, error)
-	QueuesInfo(ctx context.Context, filter string) (*QueuesInfoResult, error)
 
 	// Streaming operations
 	SubscribeToEvents(ctx context.Context, req *SubscribeRequest) (*StreamHandle, error)

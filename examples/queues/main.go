@@ -1,6 +1,7 @@
 // Package main demonstrates Queue Simple API with the KubeMQ Go SDK v2.
 //
-// This example covers: single send, batch send, receive (pull), peek, and ack all.
+// This example covers: single send, batch send, receive (pull), peek, ack all,
+// delayed messages, and dead-letter queue configuration.
 // Run with a KubeMQ server on localhost:50000
 // (e.g., docker run -d -p 50000:50000 kubemq/kubemq).
 package main
@@ -115,4 +116,39 @@ func main() {
 		log.Printf("Ack warning: %s", ackResp.Error)
 	}
 	fmt.Printf("Acknowledged %d messages\n", ackResp.AffectedMessages)
+
+	// -------------------------------------------------------------------------
+	// 6. Send a delayed message (delivered after 3 seconds)
+	// -------------------------------------------------------------------------
+	delayedMsg := kubemq.NewQueueMessage().
+		SetChannel(channel).
+		SetBody([]byte("delayed message")).
+		SetDelaySeconds(3)
+
+	delayResult, err := client.SendQueueMessage(ctx, delayedMsg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if delayResult.IsError {
+		log.Fatalf("Delayed send failed: %s", delayResult.Error)
+	}
+	fmt.Printf("Delayed send: id=%s delayedTo=%d\n", delayResult.MessageID, delayResult.DelayedTo)
+
+	// -------------------------------------------------------------------------
+	// 7. Send a message with dead-letter queue configuration
+	// -------------------------------------------------------------------------
+	dlqMsg := kubemq.NewQueueMessage().
+		SetChannel(channel).
+		SetBody([]byte("message with DLQ")).
+		SetMaxReceiveCount(3).
+		SetMaxReceiveQueue(channel + ".dlq")
+
+	dlqResult, err := client.SendQueueMessage(ctx, dlqMsg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if dlqResult.IsError {
+		log.Fatalf("DLQ send failed: %s", dlqResult.Error)
+	}
+	fmt.Printf("DLQ send: id=%s (max receives=3, dlq=%s)\n", dlqResult.MessageID, channel+".dlq")
 }

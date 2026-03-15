@@ -610,12 +610,10 @@ func TestSendEventStore_DefaultChannel(t *testing.T) {
 // Queue edge cases
 // ---------------------------------------------------------------------------
 
-func TestSendQueueMessage_EmptyResults(t *testing.T) {
+func TestSendQueueMessage_TransportError(t *testing.T) {
 	c, mt := newSubscribeTestClient(t)
-	mt.OnSendQueueMessages(func(_ context.Context, _ *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
-		return &transport.SendQueueMessagesResult{
-			Results: []*transport.SendQueueMessageResultItem{},
-		}, nil
+	mt.OnSendQueueMessage(func(_ context.Context, _ *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+		return nil, fmt.Errorf("send queue message failed: connection refused")
 	})
 	msg := &QueueMessage{
 		Channel: "q-ch",
@@ -623,7 +621,7 @@ func TestSendQueueMessage_EmptyResults(t *testing.T) {
 	}
 	_, err := c.SendQueueMessage(context.Background(), msg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "returned no results")
+	assert.Contains(t, err.Error(), "connection refused")
 }
 
 func TestPing_ClosedClient(t *testing.T) {
@@ -644,4 +642,49 @@ func TestClose_NilTransport(t *testing.T) {
 		err := c.Close()
 		assert.NoError(t, err)
 	})
+}
+
+func TestSubscribeToEventsStore_UndefinedStartOption(t *testing.T) {
+	c, _ := newSubscribeTestClient(t)
+	undefinedOpt := newFuncSubscriptionOption(func(o *subscriptionOption) {})
+	_, err := c.SubscribeToEventsStore(context.Background(), "ch", "", undefinedOpt,
+		WithOnEventStoreReceive(func(e *EventStoreReceive) {}),
+	)
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Contains(t, kErr.Message, "must not be Undefined")
+}
+
+func TestSubscribeToEventsStore_SequenceZero(t *testing.T) {
+	c, _ := newSubscribeTestClient(t)
+	_, err := c.SubscribeToEventsStore(context.Background(), "ch", "", StartFromSequence(0),
+		WithOnEventStoreReceive(func(e *EventStoreReceive) {}),
+	)
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Contains(t, kErr.Message, "StartAtSequence value must be > 0")
+}
+
+func TestSubscribeToEventsStore_TimeDeltaZero(t *testing.T) {
+	c, _ := newSubscribeTestClient(t)
+	_, err := c.SubscribeToEventsStore(context.Background(), "ch", "", StartFromTimeDelta(0),
+		WithOnEventStoreReceive(func(e *EventStoreReceive) {}),
+	)
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Contains(t, kErr.Message, "StartAtTimeDelta value must be > 0")
+}
+
+func TestSubscribeToEventsStore_TimeZero(t *testing.T) {
+	c, _ := newSubscribeTestClient(t)
+	_, err := c.SubscribeToEventsStore(context.Background(), "ch", "", StartFromTime(time.Time{}),
+		WithOnEventStoreReceive(func(e *EventStoreReceive) {}),
+	)
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Contains(t, kErr.Message, "StartAtTime value must be > 0")
 }

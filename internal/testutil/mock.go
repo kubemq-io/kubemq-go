@@ -21,10 +21,10 @@ type MockTransport struct {
 	sendCommandFn    func(ctx context.Context, req *transport.SendCommandRequest) (*transport.SendCommandResult, error)
 	sendQueryFn      func(ctx context.Context, req *transport.SendQueryRequest) (*transport.SendQueryResult, error)
 	sendResponseFn   func(ctx context.Context, req *transport.SendResponseRequest) error
+	sendQueueMsgFn   func(ctx context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error)
 	sendQueueMsgsFn  func(ctx context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error)
 	recvQueueMsgsFn  func(ctx context.Context, req *transport.ReceiveQueueMessagesReq) (*transport.ReceiveQueueMessagesResp, error)
 	ackAllFn         func(ctx context.Context, req *transport.AckAllQueueMessagesReq) (*transport.AckAllQueueMessagesResp, error)
-	queuesInfoFn     func(ctx context.Context, filter string) (*transport.QueuesInfoResult, error)
 	pingFn           func(ctx context.Context) (*transport.ServerInfoResult, error)
 	closeFn          func() error
 
@@ -32,6 +32,9 @@ type MockTransport struct {
 	subscribeToEventsStoreFn func(ctx context.Context, req *transport.SubscribeRequest) (*transport.StreamHandle, error)
 	subscribeToCommandsFn    func(ctx context.Context, req *transport.SubscribeRequest) (*transport.StreamHandle, error)
 	subscribeToQueriesFn     func(ctx context.Context, req *transport.SubscribeRequest) (*transport.StreamHandle, error)
+	sendEventsStreamFn       func(ctx context.Context) (*transport.EventStreamHandle, error)
+	queueUpstreamFn          func(ctx context.Context) (*transport.QueueUpstreamHandle, error)
+	queueDownstreamFn        func(ctx context.Context, req *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error)
 	createChannelFn          func(ctx context.Context, req *transport.CreateChannelRequest) error
 	deleteChannelFn          func(ctx context.Context, req *transport.DeleteChannelRequest) error
 	listChannelsFn           func(ctx context.Context, req *transport.ListChannelsRequest) ([]*transport.ChannelInfo, error)
@@ -59,6 +62,9 @@ func NewMockTransport() *MockTransport {
 		return &transport.SendQueryResult{Executed: true}, nil
 	}
 	mt.sendResponseFn = func(_ context.Context, _ *transport.SendResponseRequest) error { return nil }
+	mt.sendQueueMsgFn = func(_ context.Context, _ *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+		return &transport.SendQueueMessageResultItem{}, nil
+	}
 	mt.sendQueueMsgsFn = func(_ context.Context, _ *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
 		return &transport.SendQueueMessagesResult{}, nil
 	}
@@ -67,9 +73,6 @@ func NewMockTransport() *MockTransport {
 	}
 	mt.ackAllFn = func(_ context.Context, _ *transport.AckAllQueueMessagesReq) (*transport.AckAllQueueMessagesResp, error) {
 		return &transport.AckAllQueueMessagesResp{}, nil
-	}
-	mt.queuesInfoFn = func(_ context.Context, _ string) (*transport.QueuesInfoResult, error) {
-		return &transport.QueuesInfoResult{}, nil
 	}
 	mt.pingFn = func(_ context.Context) (*transport.ServerInfoResult, error) {
 		return &transport.ServerInfoResult{Host: "mock", Version: "1.0.0"}, nil
@@ -142,6 +145,13 @@ func (m *MockTransport) SendResponse(ctx context.Context, req *transport.SendRes
 	return fn(ctx, req)
 }
 
+func (m *MockTransport) SendQueueMessage(ctx context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+	m.mu.Lock()
+	fn := m.sendQueueMsgFn
+	m.mu.Unlock()
+	return fn(ctx, req)
+}
+
 func (m *MockTransport) SendQueueMessages(ctx context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
 	m.mu.Lock()
 	fn := m.sendQueueMsgsFn
@@ -161,13 +171,6 @@ func (m *MockTransport) AckAllQueueMessages(ctx context.Context, req *transport.
 	fn := m.ackAllFn
 	m.mu.Unlock()
 	return fn(ctx, req)
-}
-
-func (m *MockTransport) QueuesInfo(ctx context.Context, filter string) (*transport.QueuesInfoResult, error) {
-	m.mu.Lock()
-	fn := m.queuesInfoFn
-	m.mu.Unlock()
-	return fn(ctx, filter)
 }
 
 func (m *MockTransport) SubscribeToEvents(ctx context.Context, req *transport.SubscribeRequest) (*transport.StreamHandle, error) {
@@ -210,7 +213,13 @@ func (m *MockTransport) SubscribeToQueries(ctx context.Context, req *transport.S
 	return nil, nil
 }
 
-func (m *MockTransport) SendEventsStream(_ context.Context) (*transport.EventStreamHandle, error) {
+func (m *MockTransport) SendEventsStream(ctx context.Context) (*transport.EventStreamHandle, error) {
+	m.mu.Lock()
+	fn := m.sendEventsStreamFn
+	m.mu.Unlock()
+	if fn != nil {
+		return fn(ctx)
+	}
 	resultCh := make(chan *transport.EventStreamResult, 16)
 	doneCh := make(chan struct{})
 	return &transport.EventStreamHandle{
@@ -228,11 +237,23 @@ func (m *MockTransport) SendEventsStream(_ context.Context) (*transport.EventStr
 	}, nil
 }
 
-func (m *MockTransport) QueueUpstream(_ context.Context) (*transport.QueueUpstreamHandle, error) {
+func (m *MockTransport) QueueUpstream(ctx context.Context) (*transport.QueueUpstreamHandle, error) {
+	m.mu.Lock()
+	fn := m.queueUpstreamFn
+	m.mu.Unlock()
+	if fn != nil {
+		return fn(ctx)
+	}
 	return nil, nil
 }
 
-func (m *MockTransport) QueueDownstream(_ context.Context, _ *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error) {
+func (m *MockTransport) QueueDownstream(ctx context.Context, req *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error) {
+	m.mu.Lock()
+	fn := m.queueDownstreamFn
+	m.mu.Unlock()
+	if fn != nil {
+		return fn(ctx, req)
+	}
 	return nil, nil
 }
 
@@ -364,6 +385,13 @@ func (m *MockTransport) OnSendResponse(fn func(ctx context.Context, req *transpo
 	m.sendResponseFn = fn
 }
 
+// OnSendQueueMessage sets the handler for unary SendQueueMessage calls.
+func (m *MockTransport) OnSendQueueMessage(fn func(ctx context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sendQueueMsgFn = fn
+}
+
 // OnSendQueueMessages sets the handler for SendQueueMessages calls.
 func (m *MockTransport) OnSendQueueMessages(fn func(ctx context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error)) {
 	m.mu.Lock()
@@ -385,9 +413,23 @@ func (m *MockTransport) OnAckAllQueueMessages(fn func(ctx context.Context, req *
 	m.ackAllFn = fn
 }
 
-// OnQueuesInfo sets the handler for QueuesInfo calls.
-func (m *MockTransport) OnQueuesInfo(fn func(ctx context.Context, filter string) (*transport.QueuesInfoResult, error)) {
+// OnSendEventsStream sets the handler for SendEventsStream calls.
+func (m *MockTransport) OnSendEventsStream(fn func(ctx context.Context) (*transport.EventStreamHandle, error)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.queuesInfoFn = fn
+	m.sendEventsStreamFn = fn
+}
+
+// OnQueueUpstream sets the handler for QueueUpstream calls.
+func (m *MockTransport) OnQueueUpstream(fn func(ctx context.Context) (*transport.QueueUpstreamHandle, error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.queueUpstreamFn = fn
+}
+
+// OnQueueDownstream sets the handler for QueueDownstream calls.
+func (m *MockTransport) OnQueueDownstream(fn func(ctx context.Context, req *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.queueDownstreamFn = fn
 }

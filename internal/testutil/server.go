@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	pb "github.com/kubemq-io/protobuf/go"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -42,7 +42,6 @@ func NewTestServer(t *testing.T) *TestServer {
 		sendQueueMessagesBatchFn: defaultSendQueueMessagesBatch,
 		receiveQueueMessagesFn:   defaultReceiveQueueMessages,
 		ackAllQueueMessagesFn:    defaultAckAllQueueMessages,
-		queuesInfoFn:             defaultQueuesInfo,
 		pingFn:                   defaultPing,
 	}
 	pb.RegisterKubemqServer(srv, impl)
@@ -141,13 +140,6 @@ func (ts *TestServer) SetAckAllQueueMessagesHandler(fn func(ctx context.Context,
 	ts.impl.ackAllQueueMessagesFn = fn
 }
 
-// SetQueuesInfoHandler overrides the server's QueuesInfo behavior.
-func (ts *TestServer) SetQueuesInfoHandler(fn func(ctx context.Context, req *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error)) {
-	ts.impl.mu.Lock()
-	defer ts.impl.mu.Unlock()
-	ts.impl.queuesInfoFn = fn
-}
-
 // FailWith configures the server to return a gRPC error for all operations.
 func (ts *TestServer) FailWith(code codes.Code, msg string) {
 	err := status.Error(code, msg)
@@ -170,9 +162,6 @@ func (ts *TestServer) FailWith(code codes.Code, msg string) {
 		return nil, err
 	})
 	ts.SetAckAllQueueMessagesHandler(func(_ context.Context, _ *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
-		return nil, err
-	})
-	ts.SetQueuesInfoHandler(func(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
 		return nil, err
 	})
 	ts.SetPingHandler(func(_ context.Context, _ *pb.Empty) (*pb.PingResult, error) {
@@ -199,9 +188,8 @@ func (ts *TestServer) RecordedRequests() []*pb.Request {
 }
 
 // mockKubemqService implements pb.KubemqServer with configurable behavior.
-// The protobuf package uses gogo/protobuf (no UnimplementedKubemqServer),
-// so all interface methods must be explicitly implemented.
 type mockKubemqService struct {
+	pb.UnimplementedKubemqServer
 	mu sync.Mutex
 
 	sendEventFn              func(context.Context, *pb.Event) (*pb.Result, error)
@@ -211,7 +199,6 @@ type mockKubemqService struct {
 	sendQueueMessagesBatchFn func(context.Context, *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error)
 	receiveQueueMessagesFn   func(context.Context, *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error)
 	ackAllQueueMessagesFn    func(context.Context, *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error)
-	queuesInfoFn             func(context.Context, *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error)
 	pingFn                   func(context.Context, *pb.Empty) (*pb.PingResult, error)
 
 	recordedEvents   []*pb.Event
@@ -300,13 +287,6 @@ func (s *mockKubemqService) QueuesUpstream(_ pb.Kubemq_QueuesUpstreamServer) err
 	return status.Error(codes.Unimplemented, "not implemented in test server")
 }
 
-func (s *mockKubemqService) QueuesInfo(ctx context.Context, req *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
-	s.mu.Lock()
-	fn := s.queuesInfoFn
-	s.mu.Unlock()
-	return fn(ctx, req)
-}
-
 func defaultSendEvent(_ context.Context, event *pb.Event) (*pb.Result, error) {
 	return &pb.Result{EventID: event.EventID, Sent: true}, nil
 }
@@ -371,17 +351,5 @@ func defaultAckAllQueueMessages(_ context.Context, req *pb.AckAllQueueMessagesRe
 		RequestID:        req.RequestID,
 		AffectedMessages: 0,
 		IsError:          false,
-	}, nil
-}
-
-func defaultQueuesInfo(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
-	return &pb.QueuesInfoResponse{
-		Info: &pb.QueuesInfo{
-			TotalQueue: 0,
-			Sent:       0,
-			Delivered:  0,
-			Waiting:    0,
-			Queues:     nil,
-		},
 	}, nil
 }

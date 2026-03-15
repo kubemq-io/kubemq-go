@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/kubemq-io/protobuf/go"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -391,4 +391,149 @@ func TestFirstNonEmpty(t *testing.T) {
 	assert.Equal(t, "a", firstNonEmpty("a", "b"))
 	assert.Equal(t, "b", firstNonEmpty("", "b"))
 	assert.Equal(t, "", firstNonEmpty("", ""))
+}
+
+func TestEventStreamItemToProto(t *testing.T) {
+	tests := []struct {
+		name     string
+		item     *EventStreamItem
+		clientID string
+	}{
+		{
+			name: "full fields",
+			item: &EventStreamItem{
+				ID: "ev-1", ClientID: "item-client", Channel: "ch1",
+				Metadata: "meta", Body: []byte("body"),
+				Tags:  map[string]string{"k": "v"},
+				Store: false,
+			},
+			clientID: "default-client",
+		},
+		{
+			name: "empty clientID falls back to item.ClientID",
+			item: &EventStreamItem{
+				ID: "ev-2", ClientID: "item-client", Channel: "ch2",
+			},
+			clientID: "",
+		},
+		{
+			name: "empty item.ClientID uses provided clientID",
+			item: &EventStreamItem{
+				ID: "ev-3", Channel: "ch3",
+			},
+			clientID: "default-client",
+		},
+		{
+			name: "store true",
+			item: &EventStreamItem{
+				ID: "ev-4", Channel: "ch4", Store: true,
+			},
+			clientID: "default-client",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proto := EventStreamItemToProto(tt.item, tt.clientID)
+			assert.Equal(t, tt.item.ID, proto.EventID)
+			assert.Equal(t, tt.item.Channel, proto.Channel)
+			assert.Equal(t, tt.item.Metadata, proto.Metadata)
+			assert.Equal(t, tt.item.Body, proto.Body)
+			assert.Equal(t, tt.item.Store, proto.Store)
+			assert.Equal(t, tt.item.Tags, proto.Tags)
+			if tt.item.ClientID != "" {
+				assert.Equal(t, tt.item.ClientID, proto.ClientID)
+			} else {
+				assert.Equal(t, tt.clientID, proto.ClientID)
+			}
+		})
+	}
+}
+
+func TestEventStreamResultFromProto(t *testing.T) {
+	t.Run("nil input returns nil", func(t *testing.T) {
+		result := EventStreamResultFromProto(nil)
+		assert.Nil(t, result)
+	})
+
+	t.Run("normal conversion", func(t *testing.T) {
+		pr := &pb.Result{EventID: "ev-1", Sent: true, Error: ""}
+		result := EventStreamResultFromProto(pr)
+		assert.NotNil(t, result)
+		assert.Equal(t, "ev-1", result.EventID)
+		assert.True(t, result.Sent)
+		assert.Empty(t, result.Error)
+	})
+
+	t.Run("with error", func(t *testing.T) {
+		pr := &pb.Result{EventID: "ev-2", Sent: false, Error: "send failed"}
+		result := EventStreamResultFromProto(pr)
+		assert.NotNil(t, result)
+		assert.Equal(t, "ev-2", result.EventID)
+		assert.False(t, result.Sent)
+		assert.Equal(t, "send failed", result.Error)
+	})
+}
+
+func TestQueueUpstreamResponseFromProto(t *testing.T) {
+	t.Run("nil input returns nil", func(t *testing.T) {
+		result := QueueUpstreamResponseFromProto(nil)
+		assert.Nil(t, result)
+	})
+
+	t.Run("with results", func(t *testing.T) {
+		pr := &pb.QueuesUpstreamResponse{
+			RefRequestID: "ref-1",
+			Results: []*pb.SendQueueMessageResult{
+				{
+					MessageID:    "msg-1",
+					SentAt:       1000,
+					ExpirationAt: 2000,
+					DelayedTo:    1500,
+					IsError:      false,
+					Error:        "",
+				},
+				{
+					MessageID:    "msg-2",
+					SentAt:       1001,
+					ExpirationAt: 0,
+					DelayedTo:    0,
+					IsError:      true,
+					Error:        "queue full",
+				},
+			},
+			IsError: false,
+			Error:   "",
+		}
+		result := QueueUpstreamResponseFromProto(pr)
+		assert.NotNil(t, result)
+		assert.Equal(t, "ref-1", result.RefRequestID)
+		assert.False(t, result.IsError)
+		assert.Empty(t, result.Error)
+		assert.Len(t, result.Results, 2)
+
+		assert.Equal(t, "msg-1", result.Results[0].MessageID)
+		assert.Equal(t, int64(1000), result.Results[0].SentAt)
+		assert.Equal(t, int64(2000), result.Results[0].ExpirationAt)
+		assert.Equal(t, int64(1500), result.Results[0].DelayedTo)
+		assert.False(t, result.Results[0].IsError)
+
+		assert.Equal(t, "msg-2", result.Results[1].MessageID)
+		assert.True(t, result.Results[1].IsError)
+		assert.Equal(t, "queue full", result.Results[1].Error)
+	})
+
+	t.Run("empty results", func(t *testing.T) {
+		pr := &pb.QueuesUpstreamResponse{
+			RefRequestID: "ref-2",
+			Results:      nil,
+			IsError:      true,
+			Error:        "upstream error",
+		}
+		result := QueueUpstreamResponseFromProto(pr)
+		assert.NotNil(t, result)
+		assert.Equal(t, "ref-2", result.RefRequestID)
+		assert.True(t, result.IsError)
+		assert.Equal(t, "upstream error", result.Error)
+		assert.Empty(t, result.Results)
+	})
 }

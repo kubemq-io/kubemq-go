@@ -19,7 +19,7 @@ func TestDependencyCount(t *testing.T) {
 	allowedPrefixes := []string{
 		"google.golang.org/grpc",
 		"google.golang.org/protobuf",
-		"github.com/kubemq-io/protobuf",
+		"github.com/kubemq-io/kubemq-go/v2/pb",
 		"go.opentelemetry.io/otel",
 		"github.com/stretchr/testify",
 	}

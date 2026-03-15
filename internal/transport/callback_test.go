@@ -97,6 +97,24 @@ func TestCallbackDispatcher_ActiveConcurrent(t *testing.T) {
 	<-d.sem
 }
 
+func TestCallbackDispatcher_NilHandler(t *testing.T) {
+	d := newCallbackDispatcher(1, &testLogger{})
+	d.dispatch(context.Background(), nil)
+	d.drain(time.Second)
+}
+
+func TestCallbackDispatcher_ZeroConcurrency(t *testing.T) {
+	done := make(chan struct{})
+	d := newCallbackDispatcher(0, &testLogger{})
+	d.dispatch(context.Background(), func() { close(done) })
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("callback was not executed")
+	}
+	d.drain(time.Second)
+}
+
 func TestCallbackDispatcher_ConcurrencyLimit(t *testing.T) {
 	d := newCallbackDispatcher(2, &testLogger{})
 	var maxConcurrent atomic.Int32
