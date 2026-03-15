@@ -1,0 +1,274 @@
+syntax = "proto3";
+package kubemq;
+option go_package = "github.com/kubemq-io/kubemq-go/v2/pb";
+service kubemq {
+    rpc SendEvent (Event) returns (Result) {}
+    rpc SendEventsStream (stream Event) returns (stream Result) {}
+    rpc SubscribeToEvents (Subscribe) returns (stream EventReceive) {}
+    rpc SubscribeToRequests (Subscribe) returns (stream Request) {}
+    rpc SendRequest (Request) returns (Response) {}
+    rpc SendResponse(Response) returns (Empty) {}
+    rpc SendQueueMessage(QueueMessage) returns (SendQueueMessageResult) {}
+    rpc SendQueueMessagesBatch(QueueMessagesBatchRequest) returns (QueueMessagesBatchResponse) {}
+    rpc ReceiveQueueMessages(ReceiveQueueMessagesRequest) returns (ReceiveQueueMessagesResponse) {}
+    rpc StreamQueueMessage(stream StreamQueueMessagesRequest) returns (stream StreamQueueMessagesResponse) {}
+    rpc AckAllQueueMessages(AckAllQueueMessagesRequest) returns (AckAllQueueMessagesResponse) {}
+    rpc Ping (Empty) returns (PingResult) {}
+    rpc QueuesDownstream(stream QueuesDownstreamRequest) returns (stream QueuesDownstreamResponse) {}
+    rpc QueuesUpstream(stream QueuesUpstreamRequest) returns (stream QueuesUpstreamResponse) {}
+}
+message PingResult {
+    string  Host        =1;
+    string Version      =2;
+    int64  ServerStartTime   =3;
+    int64  ServerUpTimeSeconds =4;
+}
+message Empty {}
+
+message Result {
+    string  EventID     =1;
+    bool    Sent        =2;
+    string  Error       =3;
+}
+
+message Event {
+    string  EventID             =1;
+    string  ClientID            =2;
+    string  Channel             =3;
+    string  Metadata            =4;
+    bytes   Body                =5;
+    bool    Store               =6;
+    map<string,string>  Tags    =7;
+}
+
+message EventReceive {
+    string  EventID             =1;
+    string  Channel             =2;
+    string  Metadata            =3;
+    bytes   Body                =4;
+    int64   Timestamp           =5;
+    uint64  Sequence            =6;
+    map<string,string>  Tags    =7;
+}
+
+message Subscribe {
+    enum SubscribeType {
+        SubscribeTypeUndefined = 0;
+        Events                  =1;
+        EventsStore             =2;
+        Commands                =3;
+        Queries                 =4;
+
+    }
+    SubscribeType SubscribeTypeData         =1;
+    string ClientID                         =2;
+    string Channel                          =3;
+    string Group                            =4;
+    enum EventsStoreType {
+        EventsStoreTypeUndefined    =0;
+        StartNewOnly                =1;
+        StartFromFirst              =2;
+        StartFromLast               =3;
+        StartAtSequence             =4;
+        StartAtTime                 =5;
+        StartAtTimeDelta            =6;
+    }
+    EventsStoreType EventsStoreTypeData     =5;
+    int64 EventsStoreTypeValue              =6;
+}
+
+message Request {
+    string  RequestID            =1;
+    enum RequestType {
+        RequestTypeUnknown      =0;
+        Command                 =1;
+        Query                   =2;
+    }
+    RequestType RequestTypeData =2;
+    string  ClientID            =3;
+    string  Channel             =4;
+    string  Metadata            =5;
+    bytes   Body                =6;
+    string  ReplyChannel        =7;
+    int32   Timeout             =8;
+    string  CacheKey            =9;
+    int32   CacheTTL            =10;
+    bytes   Span                =11;
+    map<string,string>  Tags             =12;
+}
+message Response {
+    string  ClientID        =1;
+    string  RequestID       =2;
+    string  ReplyChannel    =3;
+    string  Metadata        =4;
+    bytes   Body            =5;
+    bool    CacheHit        =6;
+    int64   Timestamp       =7;
+    bool    Executed        =8;
+    string  Error           =9;
+    bytes   Span            =10;
+    map<string,string>  Tags  =11;
+}
+
+message QueueMessage {
+    string  MessageID        =1;
+    string  ClientID         =2;
+    string  Channel        =3;
+    string  Metadata         =4;
+    bytes   Body             =5;
+    map<string,string>  Tags             =6;
+    QueueMessageAttributes Attributes    =7;
+    QueueMessagePolicy Policy            =8;
+}
+message QueueMessagesBatchRequest {
+    string      BatchID                 =1;
+    repeated    QueueMessage Messages   =2;
+}
+message QueueMessagesBatchResponse {
+    string      BatchID                         =1;
+    repeated    SendQueueMessageResult Results  =2;
+    bool        HaveErrors                      =3;
+}
+
+message QueueMessageAttributes {
+    int64               Timestamp                   =1;
+    uint64              Sequence                    =2;
+    string              MD5OfBody                   =3;
+    int32               ReceiveCount                =4;
+    bool                ReRouted                    =5;
+    string              ReRoutedFromQueue           =6;
+    int64               ExpirationAt                =7;
+    int64               DelayedTo                   =8;
+
+}
+
+message QueueMessagePolicy {
+    int32               ExpirationSeconds           =1;
+    int32               DelaySeconds                =2;
+    int32               MaxReceiveCount             =3;
+    string              MaxReceiveQueue             =4;
+
+}
+message SendQueueMessageResult {
+    string  MessageID       =1;
+    int64   SentAt          =2;
+    int64   ExpirationAt    =3;
+    int64   DelayedTo       =4;
+    bool    IsError         =5;
+    string  Error           =6;
+}
+
+message ReceiveQueueMessagesRequest {
+    string RequestID                =1;
+    string  ClientID                =2;
+    string  Channel               =3;
+    int32   MaxNumberOfMessages     =4;
+    int32   WaitTimeSeconds         =5;
+    bool    IsPeak                     =6;
+}
+message ReceiveQueueMessagesResponse {
+    string   RequestID                  =1;
+    repeated QueueMessage   Messages    =2;
+    int32    MessagesReceived            =3;
+    int32    MessagesExpired             =4;
+    bool     IsPeak                         =5;
+    bool     IsError                     =6;
+    string   Error                       =7;
+}
+
+
+message AckAllQueueMessagesRequest {
+    string RequestID                 =1;
+    string  ClientID                 =2;
+    string Channel                   =3;
+    int32 WaitTimeSeconds         =4;
+}
+message AckAllQueueMessagesResponse {
+    string RequestID                =1;
+    uint64 AffectedMessages         =2;
+    bool    IsError                 =3;
+    string  Error                   =4;
+}
+
+enum StreamRequestType {
+    StreamRequestTypeUnknown      =0;
+    ReceiveMessage         =1;
+    AckMessage             =2;
+    RejectMessage          =3;
+    ModifyVisibility       =4;
+    ResendMessage          =5;
+    SendModifiedMessage    =6;
+}
+message StreamQueueMessagesRequest {
+    string RequestID                =1;
+    string ClientID                 =2;
+    StreamRequestType StreamRequestTypeData   =3;
+    string Channel                  =4;
+    int32 VisibilitySeconds         =5;
+    int32 WaitTimeSeconds               =6;
+    uint64 RefSequence              =7;
+    QueueMessage ModifiedMessage    =8;
+}
+
+
+message StreamQueueMessagesResponse {
+    string RequestID                =1;
+    StreamRequestType StreamRequestTypeData   =2;
+    QueueMessage Message            =3;
+    bool IsError                    =4;
+    string Error                    =5;
+}
+
+
+message QueuesUpstreamRequest {
+    string      RequestID                 =1;
+    repeated    QueueMessage Messages   =2;
+}
+message QueuesUpstreamResponse {
+    string      RefRequestID                    =1;
+    repeated    SendQueueMessageResult Results  =2;
+    bool IsError                    =3;
+    string Error                    =4;
+}
+
+
+enum QueuesDownstreamRequestType {
+    PollRequestTypeUnknown      =0;
+    Get                         =1;
+    AckAll                      =2;
+    AckRange                    =3;
+    NAckAll                     =4;
+    NAckRange                   =5;
+    ReQueueAll                  =6;
+    ReQueueRange                =7;
+    ActiveOffsets               =8;
+    TransactionStatus           =9;
+    CloseByClient               =10;
+    CloseByServer               =11;
+}
+
+message QueuesDownstreamRequest {
+    string RequestID                =1;
+    string ClientID                 =2;
+    QueuesDownstreamRequestType RequestTypeData =3;
+    string Channel                  =4;
+    int32 MaxItems                  =5;
+    int32 WaitTimeout               =6;
+    bool AutoAck                    =7;
+    string ReQueueChannel           =8;
+    repeated int64 SequenceRange    =9;
+    string RefTransactionId         =10;
+    map<string,string>  Metadata     =12;
+}
+
+message QueuesDownstreamResponse {
+    string TransactionId            =1;
+    string RefRequestId             =2;
+    QueuesDownstreamRequestType RequestTypeData   =3;
+    repeated QueueMessage Messages = 4;
+    repeated int64 ActiveOffsets   = 5;
+    bool IsError                    =6;
+    string Error                    =7;
+    bool TransactionComplete        =8;
+    map<string,string>  Metadata     =9;
+}

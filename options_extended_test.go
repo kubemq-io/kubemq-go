@@ -134,3 +134,9 @@ func TestOptions_ValidateTLS_ValidMTLSFromPEM(t *testing.T) {
 	err := opts.Validate()
 	assert.NoError(t, err)
 }
+
+func TestWithClientId(t *testing.T) {
+	opts := GetDefaultOptions()
+	WithClientId("my-custom-client").apply(opts)
+	assert.Equal(t, "my-custom-client", opts.clientId)
+}

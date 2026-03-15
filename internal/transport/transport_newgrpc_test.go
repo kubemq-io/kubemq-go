@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/types"
-	pb "github.com/kubemq-io/protobuf/go"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -265,13 +265,4 @@ func TestNewGRPC_AllOperations(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint64(5), ackResp.AffectedMessages)
 
-	impl.mu.Lock()
-	impl.queuesInfoFn = func(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
-		return &pb.QueuesInfoResponse{Info: &pb.QueuesInfo{TotalQueue: 3}}, nil
-	}
-	impl.mu.Unlock()
-
-	qInfo, err := gt.QueuesInfo(ctx, "*")
-	require.NoError(t, err)
-	assert.Equal(t, int32(3), qInfo.TotalQueue)
 }

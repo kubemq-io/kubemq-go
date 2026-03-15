@@ -144,14 +144,9 @@ func TestSendResponse_ValidationError(t *testing.T) {
 
 func TestSendQueueMessage_Success(t *testing.T) {
 	c, mt := newSendTestClient(t)
-	mt.OnSendQueueMessages(func(_ context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
-		require.Len(t, req.Messages, 1)
-		assert.Equal(t, "q-ch", req.Messages[0].Channel)
-		return &transport.SendQueueMessagesResult{
-			Results: []*transport.SendQueueMessageResultItem{
-				{MessageID: "msg-1", SentAt: 100},
-			},
-		}, nil
+	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+		assert.Equal(t, "q-ch", req.Channel)
+		return &transport.SendQueueMessageResultItem{MessageID: "msg-1", SentAt: 100}, nil
 	})
 	result, err := c.SendQueueMessage(context.Background(),
 		NewQueueMessage().SetChannel("q-ch").SetBody([]byte("payload")))
@@ -215,27 +210,6 @@ func TestAckAllQueueMessages_Success(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, uint64(5), resp.AffectedMessages)
-}
-
-func TestQueuesInfo_Success(t *testing.T) {
-	c, mt := newSendTestClient(t)
-	mt.OnQueuesInfo(func(_ context.Context, filter string) (*transport.QueuesInfoResult, error) {
-		assert.Equal(t, "test*", filter)
-		return &transport.QueuesInfoResult{
-			TotalQueue: 2,
-			Sent:       100,
-			Queues: []*transport.QueueInfoItem{
-				{Name: "test-q1", Messages: 50},
-				{Name: "test-q2", Messages: 30},
-			},
-		}, nil
-	})
-	info, err := c.QueuesInfo(context.Background(), "test*")
-	require.NoError(t, err)
-	assert.Equal(t, int32(2), info.TotalQueue)
-	assert.Equal(t, int64(100), info.Sent)
-	require.Len(t, info.Queues, 2)
-	assert.Equal(t, "test-q1", info.Queues[0].Name)
 }
 
 func TestClient_State(t *testing.T) {

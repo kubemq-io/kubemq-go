@@ -80,3 +80,40 @@ func TestQueueDownstreamHandle_Close_NilFn(t *testing.T) {
 	h := &QueueDownstreamHandle{}
 	h.Close()
 }
+
+func TestEventStreamHandle_Send_NilSendFn(t *testing.T) {
+	h := &EventStreamHandle{}
+	err := h.Send(&EventStreamItem{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not initialized")
+}
+
+func TestEventStreamHandle_Send_Success(t *testing.T) {
+	var gotItem *EventStreamItem
+	h := &EventStreamHandle{
+		SendFn: func(item *EventStreamItem) error {
+			gotItem = item
+			return nil
+		},
+	}
+	err := h.Send(&EventStreamItem{ID: "e-1", Channel: "ch"})
+	require.NoError(t, err)
+	assert.Equal(t, "e-1", gotItem.ID)
+}
+
+func TestEventStreamHandle_Close_NilCloseFn(t *testing.T) {
+	h := &EventStreamHandle{}
+	h.Close()
+}
+
+func TestEventStreamHandle_Close_WithCloseFn(t *testing.T) {
+	called := false
+	h := &EventStreamHandle{closeFn: func() { called = true }}
+	h.Close()
+	assert.True(t, called)
+}
+
+func TestQueueUpstreamHandle_Close_NilCloseFn(t *testing.T) {
+	h := &QueueUpstreamHandle{}
+	h.Close()
+}
