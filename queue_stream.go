@@ -1,6 +1,8 @@
 package kubemq
 
 import (
+	"fmt"
+
 	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
 )
 
@@ -10,6 +12,64 @@ type QueueTransactionMessage struct {
 	TransactionID string
 	RefRequestID  string
 	ActiveOffsets []int64
+	Metadata      map[string]string
+	sendFn        func(req *QueueDownstreamRequest) error
+}
+
+// Ack acknowledges this individual message within the current transaction.
+func (m *QueueTransactionMessage) Ack() error {
+	if m.sendFn == nil {
+		return fmt.Errorf("kubemq: no downstream send function available")
+	}
+	seq := m.sequenceNumber()
+	if seq == 0 {
+		return fmt.Errorf("kubemq: message has no sequence number")
+	}
+	return m.sendFn(&QueueDownstreamRequest{
+		RequestType:      QueueDownstreamAckRange,
+		RefTransactionID: m.TransactionID,
+		SequenceRange:    []int64{int64(seq)},
+	})
+}
+
+// Reject rejects (negative-acknowledges) this individual message within the current transaction.
+func (m *QueueTransactionMessage) Reject() error {
+	if m.sendFn == nil {
+		return fmt.Errorf("kubemq: no downstream send function available")
+	}
+	seq := m.sequenceNumber()
+	if seq == 0 {
+		return fmt.Errorf("kubemq: message has no sequence number")
+	}
+	return m.sendFn(&QueueDownstreamRequest{
+		RequestType:      QueueDownstreamNAckRange,
+		RefTransactionID: m.TransactionID,
+		SequenceRange:    []int64{int64(seq)},
+	})
+}
+
+// ReQueue re-queues this individual message to the specified channel.
+func (m *QueueTransactionMessage) ReQueue(channel string) error {
+	if m.sendFn == nil {
+		return fmt.Errorf("kubemq: no downstream send function available")
+	}
+	seq := m.sequenceNumber()
+	if seq == 0 {
+		return fmt.Errorf("kubemq: message has no sequence number")
+	}
+	return m.sendFn(&QueueDownstreamRequest{
+		RequestType:      QueueDownstreamReQueueRange,
+		RefTransactionID: m.TransactionID,
+		SequenceRange:    []int64{int64(seq)},
+		ReQueueChannel:   channel,
+	})
+}
+
+func (m *QueueTransactionMessage) sequenceNumber() uint64 {
+	if m.Message != nil && m.Message.Attributes != nil {
+		return m.Message.Attributes.Sequence
+	}
+	return 0
 }
 
 // QueuePollRequest configures a queue downstream poll operation.
@@ -17,7 +77,10 @@ type QueuePollRequest struct {
 	Channel     string
 	MaxItems    int32
 	WaitTimeout int32
-	AutoAck     bool
+	// WaitTimeoutSeconds accepts a value in seconds and converts to ms for the wire protocol.
+	// If set (>0), it takes precedence over WaitTimeout. WaitTimeout is kept for backward compatibility.
+	WaitTimeoutSeconds int32
+	AutoAck            bool
 }
 
 // QueuePollResponse contains the results of a single poll operation.
@@ -69,17 +132,20 @@ type QueueDownstreamHandle struct {
 
 // QueueDownstreamRequest is the public request type for downstream operations.
 type QueueDownstreamRequest struct {
-	RequestID        string
-	ClientID         string
-	RequestType      int32
-	Channel          string
-	MaxItems         int32
-	WaitTimeout      int32
-	AutoAck          bool
-	ReQueueChannel   string
-	SequenceRange    []int64
-	RefTransactionID string
-	Metadata         map[string]string
+	RequestID   string
+	ClientID    string
+	RequestType int32
+	Channel     string
+	MaxItems    int32
+	WaitTimeout int32
+	// WaitTimeoutSeconds accepts a value in seconds and converts to ms for the wire protocol.
+	// If set (>0), it takes precedence over WaitTimeout. WaitTimeout is kept for backward compatibility.
+	WaitTimeoutSeconds int32
+	AutoAck            bool
+	ReQueueChannel     string
+	SequenceRange      []int64
+	RefTransactionID   string
+	Metadata           map[string]string
 }
 
 // NewQueueDownstreamSendRequest creates a send request for queue downstream operations.

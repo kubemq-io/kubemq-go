@@ -22,17 +22,51 @@ func (c *Client) SendQueueMessage(ctx context.Context, msg *QueueMessage) (*Send
 	if msg.ClientID == "" {
 		msg.ClientID = c.opts.clientId
 	}
+	if msg.ID == "" {
+		msg.ID = uuid.New()
+	}
 	if err := validateQueueMessage(msg, c.opts); err != nil {
 		return nil, err
 	}
-	results, err := c.SendQueueMessages(ctx, []*QueueMessage{msg})
+
+	item := &transport.QueueMessageItem{
+		ID:       msg.ID,
+		ClientID: msg.ClientID,
+		Channel:  msg.Channel,
+		Metadata: msg.Metadata,
+		Body:     msg.Body,
+		Tags:     msg.Tags,
+	}
+	if msg.Policy != nil {
+		item.Policy = &transport.QueueMessagePolicy{
+			ExpirationSeconds: msg.Policy.ExpirationSeconds,
+			DelaySeconds:      msg.Policy.DelaySeconds,
+			MaxReceiveCount:   msg.Policy.MaxReceiveCount,
+			MaxReceiveQueue:   msg.Policy.MaxReceiveQueue,
+		}
+	}
+
+	channel := msg.Channel
+	ctx, finish := c.otel.StartSpan(ctx, middleware.SpanConfig{
+		Operation:  "queue_send",
+		Channel:    channel,
+		SpanKind:   trace.SpanKindProducer,
+		ClientID:   c.opts.clientId,
+		BatchCount: 1,
+	})
+	r, err := c.transport.SendQueueMessage(ctx, item)
+	finish(err)
 	if err != nil {
 		return nil, err
 	}
-	if len(results) > 0 {
-		return results[0], nil
-	}
-	return nil, fmt.Errorf("kubemq: SendQueueMessage returned no results")
+	return &SendQueueMessageResult{
+		MessageID:    r.MessageID,
+		SentAt:       r.SentAt,
+		ExpirationAt: r.ExpirationAt,
+		DelayedTo:    r.DelayedTo,
+		IsError:      r.IsError,
+		Error:        r.Error,
+	}, nil
 }
 
 // SendQueueMessages sends multiple messages to a queue in a batch.
@@ -104,10 +138,6 @@ func (c *Client) SendQueueMessages(ctx context.Context, msgs []*QueueMessage) ([
 			DelayedTo:    r.DelayedTo,
 			IsError:      r.IsError,
 			Error:        r.Error,
-			RefChannel:   r.RefChannel,
-			RefTopic:     r.RefTopic,
-			RefPartition: r.RefPartition,
-			RefHash:      r.RefHash,
 		})
 	}
 	return out, nil
@@ -219,37 +249,6 @@ func (c *Client) AckAllQueueMessages(ctx context.Context, req *AckAllQueueMessag
 	}, nil
 }
 
-// QueuesInfo returns information about queues matching the filter.
-func (c *Client) QueuesInfo(ctx context.Context, filter string) (*QueuesInfo, error) {
-	if err := c.checkClosed(); err != nil {
-		return nil, err
-	}
-	result, err := c.transport.QueuesInfo(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-	out := &QueuesInfo{
-		TotalQueue: result.TotalQueue,
-		Sent:       result.Sent,
-		Delivered:  result.Delivered,
-		Waiting:    result.Waiting,
-	}
-	for _, q := range result.Queues {
-		out.Queues = append(out.Queues, &QueueInfo{
-			Name:        q.Name,
-			Messages:    q.Messages,
-			Bytes:       q.Bytes,
-			FirstSeq:    q.FirstSeq,
-			LastSeq:     q.LastSeq,
-			Sent:        q.Sent,
-			Delivered:   q.Delivered,
-			Waiting:     q.Waiting,
-			Subscribers: q.Subscribers,
-		})
-	}
-	return out, nil
-}
-
 // QueueUpstream opens a bidirectional stream for high-throughput queue message publishing.
 // Returns a handle with Send, Results, and Close.
 func (c *Client) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error) {
@@ -274,10 +273,6 @@ func (c *Client) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error
 						DelayedTo:    ri.DelayedTo,
 						IsError:      ri.IsError,
 						Error:        ri.Error,
-						RefChannel:   ri.RefChannel,
-						RefTopic:     ri.RefTopic,
-						RefPartition: ri.RefPartition,
-						RefHash:      ri.RefHash,
 					})
 				}
 				select {
@@ -296,6 +291,9 @@ func (c *Client) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error
 
 	return &QueueUpstreamHandle{
 		Send: func(requestID string, msgs []*QueueMessage) error {
+			if requestID == "" {
+				requestID = uuid.New()
+			}
 			items := make([]*transport.QueueMessageItem, 0, len(msgs))
 			for _, m := range msgs {
 				if m.ID == "" {
@@ -341,6 +339,29 @@ func (c *Client) QueueDownstream(ctx context.Context) (*QueueDownstreamHandle, e
 		return nil, err
 	}
 
+	sendDownstream := func(req *QueueDownstreamRequest) error {
+		if req.RequestID == "" {
+			req.RequestID = uuid.New()
+		}
+		waitTimeout := req.WaitTimeout
+		if req.WaitTimeoutSeconds > 0 {
+			waitTimeout = req.WaitTimeoutSeconds * 1000
+		}
+		return tHandle.Send(&transport.QueueDownstreamSendRequest{
+			RequestID:        req.RequestID,
+			ClientID:         req.ClientID,
+			RequestType:      req.RequestType,
+			Channel:          req.Channel,
+			MaxItems:         req.MaxItems,
+			WaitTimeout:      waitTimeout,
+			AutoAck:          req.AutoAck,
+			ReQueueChannel:   req.ReQueueChannel,
+			SequenceRange:    req.SequenceRange,
+			RefTransactionID: req.RefTransactionID,
+			Metadata:         req.Metadata,
+		})
+	}
+
 	msgCh := make(chan *QueueTransactionMessage, 16)
 	go func() {
 		for msg := range tHandle.Messages {
@@ -384,6 +405,8 @@ func (c *Client) QueueDownstream(ctx context.Context) (*QueueDownstreamHandle, e
 						TransactionID: r.TransactionID,
 						RefRequestID:  r.RefRequestID,
 						ActiveOffsets: r.ActiveOffsets,
+						Metadata:      r.Metadata,
+						sendFn:        sendDownstream,
 					}:
 					case <-ctx.Done():
 						close(msgCh)
@@ -398,22 +421,8 @@ func (c *Client) QueueDownstream(ctx context.Context) (*QueueDownstreamHandle, e
 	return &QueueDownstreamHandle{
 		Messages: msgCh,
 		Errors:   tHandle.Errors,
-		Send: func(req *QueueDownstreamRequest) error {
-			return tHandle.Send(&transport.QueueDownstreamSendRequest{
-				RequestID:        req.RequestID,
-				ClientID:         req.ClientID,
-				RequestType:      req.RequestType,
-				Channel:          req.Channel,
-				MaxItems:         req.MaxItems,
-				WaitTimeout:      req.WaitTimeout,
-				AutoAck:          req.AutoAck,
-				ReQueueChannel:   req.ReQueueChannel,
-				SequenceRange:    req.SequenceRange,
-				RefTransactionID: req.RefTransactionID,
-				Metadata:         req.Metadata,
-			})
-		},
-		Close: tHandle.Close,
+		Send:     sendDownstream,
+		Close:    tHandle.Close,
 	}, nil
 }
 
@@ -436,13 +445,18 @@ func (c *Client) PollQueue(ctx context.Context, req *QueuePollRequest) (*QueuePo
 	}
 	defer handle.Close()
 
+	waitTimeout := req.WaitTimeout
+	if req.WaitTimeoutSeconds > 0 {
+		waitTimeout = req.WaitTimeoutSeconds * 1000
+	}
+
 	err = handle.Send(&QueueDownstreamRequest{
 		RequestID:   uuid.New(),
 		ClientID:    c.opts.clientId,
 		RequestType: QueueDownstreamGet,
 		Channel:     req.Channel,
 		MaxItems:    req.MaxItems,
-		WaitTimeout: req.WaitTimeout,
+		WaitTimeout: waitTimeout,
 		AutoAck:     req.AutoAck,
 	})
 	if err != nil {

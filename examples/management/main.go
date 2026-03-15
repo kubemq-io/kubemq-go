@@ -71,35 +71,7 @@ func main() {
 	}
 
 	// -------------------------------------------------------------------------
-	// 4. Queue info — all queues
-	// -------------------------------------------------------------------------
-	info, err := client.QueuesInfo(ctx, "")
-	if err != nil {
-		log.Println("QueuesInfo all:", err)
-	} else {
-		fmt.Printf("Queue info: total=%d sent=%d delivered=%d waiting=%d\n",
-			info.TotalQueue, info.Sent, info.Delivered, info.Waiting)
-		for _, q := range info.Queues {
-			fmt.Printf("  queue=%s messages=%d bytes=%d firstSeq=%d lastSeq=%d subscribers=%d\n",
-				q.Name, q.Messages, q.Bytes, q.FirstSeq, q.LastSeq, q.Subscribers)
-		}
-	}
-
-	// -------------------------------------------------------------------------
-	// 5. Queue info — specific queue
-	// -------------------------------------------------------------------------
-	specificInfo, err := client.QueuesInfo(ctx, "mgmt-queue-ch")
-	if err != nil {
-		log.Println("QueuesInfo specific:", err)
-	} else {
-		fmt.Printf("Specific queue info: total=%d\n", specificInfo.TotalQueue)
-		for _, q := range specificInfo.Queues {
-			fmt.Printf("  queue=%s messages=%d waiting=%d\n", q.Name, q.Messages, q.Waiting)
-		}
-	}
-
-	// -------------------------------------------------------------------------
-	// 6. Purge queue (via AckAllQueueMessages)
+	// 4. Purge queue (via AckAllQueueMessages)
 	// -------------------------------------------------------------------------
 	// First send a message to the queue so there's something to purge
 	msg := kubemq.NewQueueMessage().
@@ -118,7 +90,7 @@ func main() {
 	}
 
 	// -------------------------------------------------------------------------
-	// 7. Delete channels
+	// 5. Delete channels
 	// -------------------------------------------------------------------------
 	err = client.DeleteChannel(ctx, "mgmt-events-ch", kubemq.ChannelTypeEvents)
 	if err != nil {

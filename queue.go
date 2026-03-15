@@ -162,10 +162,6 @@ type SendQueueMessageResult struct {
 	DelayedTo    int64
 	IsError      bool
 	Error        string
-	RefChannel   string
-	RefTopic     string
-	RefPartition int32
-	RefHash      string
 }
 
 // ReceiveQueueMessagesRequest defines parameters for receiving queue messages.
@@ -203,26 +199,4 @@ type AckAllQueueMessagesResponse struct {
 	AffectedMessages uint64
 	IsError          bool
 	Error            string
-}
-
-// QueuesInfo contains information about queues.
-type QueuesInfo struct {
-	TotalQueue int32
-	Sent       int64
-	Delivered  int64
-	Waiting    int64
-	Queues     []*QueueInfo
-}
-
-// QueueInfo represents info about a single queue.
-type QueueInfo struct {
-	Name        string
-	Messages    int64
-	Bytes       int64
-	FirstSeq    int64
-	LastSeq     int64
-	Sent        int64
-	Delivered   int64
-	Waiting     int64
-	Subscribers int64
 }

@@ -181,23 +181,6 @@ func TestIntegration_AckAllQueueMessages(t *testing.T) {
 	assert.GreaterOrEqual(t, int(resp.AffectedMessages), 3)
 }
 
-func TestIntegration_QueuesInfo(t *testing.T) {
-	c := newIntegrationClient(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	ch := fmt.Sprintf("test-qinfo-%d", time.Now().UnixNano())
-
-	_, err := c.SendQueueMessage(ctx, NewQueueMessage().
-		SetChannel(ch).
-		SetBody([]byte("info-test")))
-	require.NoError(t, err)
-
-	info, err := c.QueuesInfo(ctx, ch)
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, int(info.TotalQueue), 1)
-}
-
 func TestIntegration_EventsSubscribeWithGroup(t *testing.T) {
 	c1 := newIntegrationClient(t)
 	c2 := newIntegrationClient(t)

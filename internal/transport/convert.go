@@ -3,7 +3,7 @@ package transport
 import (
 	"time"
 
-	pb "github.com/kubemq-io/protobuf/go"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 )
 
 // EventStreamItemToProto converts an EventStreamItem to a protobuf Event.
@@ -235,10 +235,6 @@ func SendQueueMessageResultFromProto(r *pb.SendQueueMessageResult) *SendQueueMes
 		DelayedTo:    r.DelayedTo,
 		IsError:      r.IsError,
 		Error:        r.Error,
-		RefChannel:   r.RefChannel,
-		RefTopic:     r.RefTopic,
-		RefPartition: r.RefPartition,
-		RefHash:      r.RefHash,
 	}
 }
 
@@ -361,10 +357,6 @@ func QueueUpstreamResponseFromProto(r *pb.QueuesUpstreamResponse) *QueueUpstream
 			DelayedTo:    res.DelayedTo,
 			IsError:      res.IsError,
 			Error:        res.Error,
-			RefChannel:   res.RefChannel,
-			RefTopic:     res.RefTopic,
-			RefPartition: res.RefPartition,
-			RefHash:      res.RefHash,
 		})
 	}
 	return &QueueUpstreamResult{
@@ -392,5 +384,6 @@ func QueueDownstreamResponseFromProto(r *pb.QueuesDownstreamResponse) *QueueDown
 		IsError:             r.IsError,
 		Error:               r.Error,
 		TransactionComplete: r.TransactionComplete,
+		Metadata:            r.Metadata,
 	}
 }
