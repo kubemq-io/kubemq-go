@@ -166,10 +166,6 @@ type SendQueueMessageResultItem struct {
 	DelayedTo    int64
 	IsError      bool
 	Error        string
-	RefChannel   string
-	RefTopic     string
-	RefPartition int32
-	RefHash      string
 }
 
 // SendQueueMessagesResult is the internal result for batch queue message sends.
@@ -212,28 +208,6 @@ type AckAllQueueMessagesResp struct {
 	AffectedMessages uint64
 	IsError          bool
 	Error            string
-}
-
-// QueuesInfoResult is the internal result for queue info queries.
-type QueuesInfoResult struct {
-	TotalQueue int32
-	Sent       int64
-	Delivered  int64
-	Waiting    int64
-	Queues     []*QueueInfoItem
-}
-
-// QueueInfoItem represents info about a single queue.
-type QueueInfoItem struct {
-	Name        string
-	Messages    int64
-	Bytes       int64
-	FirstSeq    int64
-	LastSeq     int64
-	Sent        int64
-	Delivered   int64
-	Waiting     int64
-	Subscribers int64
 }
 
 // SubscribeRequest is the internal request for subscription operations.
@@ -372,6 +346,7 @@ type QueueDownstreamResult struct {
 	IsError             bool
 	Error               string
 	TransactionComplete bool
+	Metadata            map[string]string
 }
 
 // Config holds configuration for creating a transport connection.

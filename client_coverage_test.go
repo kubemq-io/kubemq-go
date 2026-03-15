@@ -93,13 +93,9 @@ func TestSendQueueMessage_DefaultChannel(t *testing.T) {
 	c, mt := newCovTestClient(t)
 	c.opts.defaultChannel = "default-q"
 	var captured string
-	mt.OnSendQueueMessages(func(_ context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
-		if len(req.Messages) > 0 {
-			captured = req.Messages[0].Channel
-		}
-		return &transport.SendQueueMessagesResult{
-			Results: []*transport.SendQueueMessageResultItem{{MessageID: "1"}},
-		}, nil
+	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+		captured = req.Channel
+		return &transport.SendQueueMessageResultItem{MessageID: "1"}, nil
 	})
 	_, err := c.SendQueueMessage(context.Background(), NewQueueMessage().
 		SetBody([]byte("body")))
@@ -156,43 +152,6 @@ func TestAckAllQueueMessages_EmptyChannel(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, resp)
-}
-
-func TestQueuesInfo_ClosedClient(t *testing.T) {
-	c, mt := newCovTestClient(t)
-	mt.Close()
-	_, err := c.QueuesInfo(context.Background(), "")
-	assert.ErrorIs(t, err, ErrClientClosed)
-}
-
-func TestQueuesInfo_TransportError(t *testing.T) {
-	c, mt := newCovTestClient(t)
-	mt.OnQueuesInfo(func(_ context.Context, _ string) (*transport.QueuesInfoResult, error) {
-		return nil, errors.New("info error")
-	})
-	_, err := c.QueuesInfo(context.Background(), "")
-	assert.Error(t, err)
-}
-
-func TestQueuesInfo_WithQueues(t *testing.T) {
-	c, mt := newCovTestClient(t)
-	mt.OnQueuesInfo(func(_ context.Context, _ string) (*transport.QueuesInfoResult, error) {
-		return &transport.QueuesInfoResult{
-			TotalQueue: 2,
-			Sent:       100,
-			Delivered:  80,
-			Waiting:    20,
-			Queues: []*transport.QueueInfoItem{
-				{Name: "q1", Messages: 10, Bytes: 1024, FirstSeq: 1, LastSeq: 10, Sent: 50, Delivered: 40, Waiting: 10, Subscribers: 2},
-				{Name: "q2", Messages: 5, Bytes: 512, FirstSeq: 1, LastSeq: 5, Sent: 50, Delivered: 40, Waiting: 10, Subscribers: 1},
-			},
-		}, nil
-	})
-	info, err := c.QueuesInfo(context.Background(), "")
-	require.NoError(t, err)
-	assert.Equal(t, int32(2), info.TotalQueue)
-	require.Len(t, info.Queues, 2)
-	assert.Equal(t, "q1", info.Queues[0].Name)
 }
 
 func TestReceiveQueueMessages_ClosedClient(t *testing.T) {
@@ -281,4 +240,82 @@ func TestSendQueueMessages_ClosedClient(t *testing.T) {
 		NewQueueMessage().SetChannel("test").SetBody([]byte("body")),
 	})
 	assert.ErrorIs(t, err, ErrClientClosed)
+}
+
+func TestReceiveQueueMessages_WithAttributesAndPolicy(t *testing.T) {
+	c, mt := newSendTestClient(t)
+	mt.OnReceiveQueueMessages(func(_ context.Context, req *transport.ReceiveQueueMessagesReq) (*transport.ReceiveQueueMessagesResp, error) {
+		return &transport.ReceiveQueueMessagesResp{
+			Messages: []*transport.QueueMessageItem{
+				{
+					ID: "m1", Channel: "q-ch", Body: []byte("data"),
+					Policy:     &transport.QueueMessagePolicy{ExpirationSeconds: 30, DelaySeconds: 5},
+					Attributes: &transport.QueueMessageAttributes{Timestamp: 100, Sequence: 1},
+				},
+			},
+			MessagesReceived: 1,
+		}, nil
+	})
+	resp, err := c.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesRequest{
+		Channel: "q-ch", MaxNumberOfMessages: 10, WaitTimeSeconds: 5,
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+	require.NotNil(t, resp.Messages[0].Policy)
+	assert.Equal(t, 30, resp.Messages[0].Policy.ExpirationSeconds)
+	require.NotNil(t, resp.Messages[0].Attributes)
+	assert.Equal(t, uint64(1), resp.Messages[0].Attributes.Sequence)
+}
+
+func TestReceiveQueueMessages_EmptyChannel(t *testing.T) {
+	c, _ := newSendTestClient(t)
+	_, err := c.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesRequest{
+		MaxNumberOfMessages: 10, WaitTimeSeconds: 5,
+	})
+	assert.NoError(t, err)
+}
+
+func TestSendQueueMessage_WithPolicy(t *testing.T) {
+	c, mt := newSendTestClient(t)
+	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+		require.NotNil(t, req.Policy)
+		assert.Equal(t, 60, req.Policy.ExpirationSeconds)
+		return &transport.SendQueueMessageResultItem{MessageID: "m1"}, nil
+	})
+	msg := c.NewQueueMessage()
+	msg.Channel = "q-ch"
+	msg.Body = []byte("data")
+	msg.Policy = &QueuePolicy{ExpirationSeconds: 60}
+	_, err := c.SendQueueMessage(context.Background(), msg)
+	assert.NoError(t, err)
+}
+
+func TestReceiveQueueMessages_InvalidMaxMessages(t *testing.T) {
+	c, _ := newSendTestClient(t)
+	_, err := c.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesRequest{
+		Channel: "q-ch", MaxNumberOfMessages: 0, WaitTimeSeconds: 5,
+	})
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Contains(t, kErr.Message, "MaxNumberOfMessages")
+}
+
+func TestReceiveQueueMessages_InvalidChannel(t *testing.T) {
+	c, _ := newSendTestClient(t)
+	_, err := c.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesRequest{
+		Channel: "invalid*channel", MaxNumberOfMessages: 10, WaitTimeSeconds: 5,
+	})
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Contains(t, kErr.Message, "wildcard")
+}
+
+func TestAckAllQueueMessages_InvalidChannel(t *testing.T) {
+	c, _ := newSendTestClient(t)
+	_, err := c.AckAllQueueMessages(context.Background(), &AckAllQueueMessagesRequest{
+		Channel: "invalid*channel", WaitTimeSeconds: 5,
+	})
+	require.Error(t, err)
 }

@@ -3,7 +3,7 @@ package transport
 import (
 	"testing"
 
-	pb "github.com/kubemq-io/protobuf/go"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 	"github.com/stretchr/testify/assert"
 )
 

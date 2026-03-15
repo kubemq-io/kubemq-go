@@ -5,17 +5,21 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/middleware"
 	"github.com/kubemq-io/kubemq-go/v2/internal/types"
-	pb "github.com/kubemq-io/protobuf/go"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
+	"github.com/kubemq-io/kubemq-go/v2/pkg/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -708,6 +712,27 @@ func (t *grpcTransport) SendResponse(ctx context.Context, req *SendResponseReque
 	return nil
 }
 
+// SendQueueMessage sends a single queue message using the unary RPC.
+func (t *grpcTransport) SendQueueMessage(ctx context.Context, req *QueueMessageItem) (*SendQueueMessageResultItem, error) {
+	if !t.enterOperation() {
+		return nil, fmt.Errorf("kubemq: client closed")
+	}
+	defer t.exitOperation()
+
+	if err := t.checkReady(ctx); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := withDefaultTimeout(ctx, defaultSendTimeout)
+	defer cancel()
+	pbMsg := QueueMessageToProto(req, t.cfg.ClientID)
+	result, err := t.getClient().SendQueueMessage(ctx, pbMsg)
+	if err != nil {
+		return nil, fmt.Errorf("send queue message failed: %w", err)
+	}
+	return SendQueueMessageResultFromProto(result), nil
+}
+
 // SendQueueMessages sends one or more queue messages.
 func (t *grpcTransport) SendQueueMessages(ctx context.Context, req *SendQueueMessagesRequest) (*SendQueueMessagesResult, error) {
 	if !t.enterOperation() {
@@ -722,7 +747,7 @@ func (t *grpcTransport) SendQueueMessages(ctx context.Context, req *SendQueueMes
 	ctx, cancel := withDefaultTimeout(ctx, defaultSendTimeout)
 	defer cancel()
 	pbBatch := &pb.QueueMessagesBatchRequest{
-		BatchID:  "",
+		BatchID:  uuid.New(),
 		Messages: make([]*pb.QueueMessage, 0, len(req.Messages)),
 	}
 	for _, m := range req.Messages {
@@ -791,49 +816,6 @@ func (t *grpcTransport) AckAllQueueMessages(ctx context.Context, req *AckAllQueu
 		return nil, fmt.Errorf("ack all queue messages failed: %w", err)
 	}
 	return AckAllRespFromProto(result), nil
-}
-
-// QueuesInfo queries queue info from the server.
-func (t *grpcTransport) QueuesInfo(ctx context.Context, filter string) (*QueuesInfoResult, error) {
-	if !t.enterOperation() {
-		return nil, fmt.Errorf("kubemq: client closed")
-	}
-	defer t.exitOperation()
-
-	if err := t.checkReady(ctx); err != nil {
-		return nil, err
-	}
-
-	result, err := t.getClient().QueuesInfo(ctx, &pb.QueuesInfoRequest{
-		RequestID: "",
-		QueueName: filter,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("queues info failed: %w", err)
-	}
-	if result == nil || result.Info == nil {
-		return &QueuesInfoResult{}, nil
-	}
-	out := &QueuesInfoResult{
-		TotalQueue: result.Info.TotalQueue,
-		Sent:       result.Info.Sent,
-		Delivered:  result.Info.Delivered,
-		Waiting:    result.Info.Waiting,
-	}
-	for _, q := range result.Info.Queues {
-		out.Queues = append(out.Queues, &QueueInfoItem{
-			Name:        q.Name,
-			Messages:    q.Messages,
-			Bytes:       q.Bytes,
-			FirstSeq:    q.FirstSequence,
-			LastSeq:     q.LastSequence,
-			Sent:        q.Sent,
-			Delivered:   q.Delivered,
-			Waiting:     q.Waiting,
-			Subscribers: q.Subscribers,
-		})
-	}
-	return out, nil
 }
 
 const requestChannel = "kubemq.cluster.internal.requests"
@@ -1408,6 +1390,7 @@ func (t *grpcTransport) DeleteChannel(ctx context.Context, req *DeleteChannelReq
 }
 
 // ListChannels lists channels by sending an internal query to the KubeMQ server.
+// Retries up to 3 times on "cluster snapshot not ready" or gRPC DeadlineExceeded errors.
 func (t *grpcTransport) ListChannels(ctx context.Context, req *ListChannelsRequest) ([]*ChannelInfo, error) {
 	if !t.enterOperation() {
 		return nil, fmt.Errorf("kubemq: client closed")
@@ -1418,35 +1401,72 @@ func (t *grpcTransport) ListChannels(ctx context.Context, req *ListChannelsReque
 		return nil, err
 	}
 
-	ctx, cancel := withDefaultTimeout(ctx, defaultRPCTimeout)
-	defer cancel()
-	pbReq := &pb.Request{
-		RequestID:       "",
-		RequestTypeData: pb.Request_Query,
-		ClientID:        firstNonEmpty(req.ClientID, t.cfg.ClientID),
-		Channel:         requestChannel,
-		Metadata:        "list-channels",
-		Timeout:         int32(defaultRPCTimeout.Milliseconds()),
-		Tags: map[string]string{
-			"channel_type": req.ChannelType,
-			"client_id":    firstNonEmpty(req.ClientID, t.cfg.ClientID),
-		},
+	const maxRetries = 3
+	const retryDelay = 1 * time.Second
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			timer := time.NewTimer(retryDelay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
+		}
+
+		rctx, cancel := withDefaultTimeout(ctx, defaultRPCTimeout)
+		pbReq := &pb.Request{
+			RequestID:       "",
+			RequestTypeData: pb.Request_Query,
+			ClientID:        firstNonEmpty(req.ClientID, t.cfg.ClientID),
+			Channel:         requestChannel,
+			Metadata:        "list-channels",
+			Timeout:         int32(defaultRPCTimeout.Milliseconds()),
+			Tags: map[string]string{
+				"channel_type": req.ChannelType,
+				"client_id":    firstNonEmpty(req.ClientID, t.cfg.ClientID),
+			},
+		}
+		if req.Search != "" {
+			pbReq.Tags["channel_search"] = req.Search
+		}
+		resp, err := t.getClient().SendRequest(rctx, pbReq)
+		cancel()
+		if err != nil {
+			if isListChannelsRetryable(err) && attempt < maxRetries {
+				lastErr = err
+				continue
+			}
+			return nil, fmt.Errorf("list channels failed: %w", err)
+		}
+		if resp.Error != "" {
+			if strings.Contains(resp.Error, "cluster snapshot not ready") && attempt < maxRetries {
+				lastErr = fmt.Errorf("list channels: %s", resp.Error)
+				continue
+			}
+			return nil, fmt.Errorf("list channels: %s", resp.Error)
+		}
+		channels, err := parseChannelList(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("list channels: failed to parse response: %w", err)
+		}
+		return channels, nil
 	}
-	if req.Search != "" {
-		pbReq.Tags["channel_search"] = req.Search
+	return nil, fmt.Errorf("list channels failed after retries: %w", lastErr)
+}
+
+func isListChannelsRetryable(err error) bool {
+	if s, ok := status.FromError(err); ok {
+		if s.Code() == codes.DeadlineExceeded {
+			return true
+		}
 	}
-	resp, err := t.getClient().SendRequest(ctx, pbReq)
-	if err != nil {
-		return nil, fmt.Errorf("list channels failed: %w", err)
+	if strings.Contains(err.Error(), "cluster snapshot not ready") {
+		return true
 	}
-	if resp.Error != "" {
-		return nil, fmt.Errorf("list channels: %s", resp.Error)
-	}
-	channels, err := parseChannelList(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("list channels: failed to parse response: %w", err)
-	}
-	return channels, nil
+	return false
 }
 
 type channelListItem struct {

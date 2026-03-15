@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/types"
-	pb "github.com/kubemq-io/protobuf/go"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -22,6 +22,7 @@ import (
 const testBufSize = 1024 * 1024
 
 type inlineServer struct {
+	pb.UnimplementedKubemqServer
 	mu sync.Mutex
 
 	sendEventFn              func(context.Context, *pb.Event) (*pb.Result, error)
@@ -31,7 +32,6 @@ type inlineServer struct {
 	sendQueueMessagesBatchFn func(context.Context, *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error)
 	receiveQueueMessagesFn   func(context.Context, *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error)
 	ackAllQueueMessagesFn    func(context.Context, *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error)
-	queuesInfoFn             func(context.Context, *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error)
 	pingFn                   func(context.Context, *pb.Empty) (*pb.PingResult, error)
 }
 
@@ -61,9 +61,6 @@ func newInlineServer() *inlineServer {
 		},
 		ackAllQueueMessagesFn: func(_ context.Context, req *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
 			return &pb.AckAllQueueMessagesResponse{RequestID: req.RequestID}, nil
-		},
-		queuesInfoFn: func(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
-			return &pb.QueuesInfoResponse{Info: &pb.QueuesInfo{}}, nil
 		},
 		pingFn: func(_ context.Context, _ *pb.Empty) (*pb.PingResult, error) {
 			return &pb.PingResult{Host: "test-server", Version: "test-1.0.0", ServerUpTimeSeconds: 100}, nil
@@ -136,12 +133,6 @@ func (s *inlineServer) QueuesDownstream(_ pb.Kubemq_QueuesDownstreamServer) erro
 }
 func (s *inlineServer) QueuesUpstream(_ pb.Kubemq_QueuesUpstreamServer) error {
 	return status.Error(codes.Unimplemented, "not implemented")
-}
-func (s *inlineServer) QueuesInfo(ctx context.Context, req *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
-	s.mu.Lock()
-	fn := s.queuesInfoFn
-	s.mu.Unlock()
-	return fn(ctx, req)
 }
 
 // newTestTransport creates a grpcTransport wired to a bufconn gRPC server.
@@ -437,90 +428,6 @@ func TestGRPCTransport_AckAllQueueMessages_Error(t *testing.T) {
 	assert.Contains(t, err.Error(), "ack all queue messages failed")
 }
 
-func TestGRPCTransport_QueuesInfo(t *testing.T) {
-	gt, impl := newTestTransport(t)
-
-	impl.mu.Lock()
-	impl.queuesInfoFn = func(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
-		return &pb.QueuesInfoResponse{
-			Info: &pb.QueuesInfo{
-				TotalQueue: 2,
-				Sent:       100,
-				Delivered:  80,
-				Waiting:    20,
-				Queues: []*pb.QueueInfo{
-					{
-						Name:          "q1",
-						Messages:      50,
-						Bytes:         1024,
-						FirstSequence: 1,
-						LastSequence:  50,
-						Sent:          50,
-						Delivered:     40,
-						Waiting:       10,
-						Subscribers:   2,
-					},
-					{
-						Name:          "q2",
-						Messages:      50,
-						Bytes:         2048,
-						FirstSequence: 1,
-						LastSequence:  50,
-						Sent:          50,
-						Delivered:     40,
-						Waiting:       10,
-						Subscribers:   1,
-					},
-				},
-			},
-		}, nil
-	}
-	impl.mu.Unlock()
-
-	result, err := gt.QueuesInfo(context.Background(), "q*")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Equal(t, int32(2), result.TotalQueue)
-	assert.Equal(t, int64(100), result.Sent)
-	assert.Equal(t, int64(80), result.Delivered)
-	assert.Equal(t, int64(20), result.Waiting)
-	require.Len(t, result.Queues, 2)
-	assert.Equal(t, "q1", result.Queues[0].Name)
-	assert.Equal(t, int64(1), result.Queues[0].FirstSeq)
-	assert.Equal(t, int64(50), result.Queues[0].LastSeq)
-	assert.Equal(t, "q2", result.Queues[1].Name)
-}
-
-func TestGRPCTransport_QueuesInfo_Error(t *testing.T) {
-	gt, impl := newTestTransport(t)
-
-	impl.mu.Lock()
-	impl.queuesInfoFn = func(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
-		return nil, fmt.Errorf("info error")
-	}
-	impl.mu.Unlock()
-
-	result, err := gt.QueuesInfo(context.Background(), "")
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "queues info failed")
-}
-
-func TestGRPCTransport_QueuesInfo_NilInfo(t *testing.T) {
-	gt, impl := newTestTransport(t)
-
-	impl.mu.Lock()
-	impl.queuesInfoFn = func(_ context.Context, _ *pb.QueuesInfoRequest) (*pb.QueuesInfoResponse, error) {
-		return &pb.QueuesInfoResponse{Info: nil}, nil
-	}
-	impl.mu.Unlock()
-
-	result, err := gt.QueuesInfo(context.Background(), "")
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Equal(t, int32(0), result.TotalQueue)
-}
-
 func TestGRPCTransport_SendQueueMessages(t *testing.T) {
 	gt, impl := newTestTransport(t)
 
@@ -591,9 +498,6 @@ func TestGRPCTransport_Closed_RejectsOperations(t *testing.T) {
 	_, err = gt.AckAllQueueMessages(context.Background(), &AckAllQueueMessagesReq{})
 	assert.Error(t, err)
 
-	_, err = gt.QueuesInfo(context.Background(), "")
-	assert.Error(t, err)
-
 	_, err = gt.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesReq{})
 	assert.Error(t, err)
 
@@ -620,4 +524,74 @@ func TestGRPCTransport_SendEvent(t *testing.T) {
 		Body:    []byte("payload"),
 	})
 	require.NoError(t, err)
+}
+
+func TestGRPCTransport_SendQueueMessage_Success(t *testing.T) {
+	gt, impl := newTestTransport(t)
+
+	impl.mu.Lock()
+	impl.sendQueueMessageFn = func(_ context.Context, msg *pb.QueueMessage) (*pb.SendQueueMessageResult, error) {
+		return &pb.SendQueueMessageResult{
+			MessageID: msg.MessageID,
+			SentAt:    time.Now().Unix(),
+		}, nil
+	}
+	impl.mu.Unlock()
+
+	result, err := gt.SendQueueMessage(context.Background(), &QueueMessageItem{
+		ID:       "q-1",
+		ClientID: "test",
+		Channel:  "queue-ch",
+		Body:     []byte("payload"),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "q-1", result.MessageID)
+}
+
+func TestGRPCTransport_SendQueueMessage_Error(t *testing.T) {
+	gt, impl := newTestTransport(t)
+
+	impl.mu.Lock()
+	impl.sendQueueMessageFn = func(_ context.Context, _ *pb.QueueMessage) (*pb.SendQueueMessageResult, error) {
+		return nil, status.Error(codes.Internal, "queue error")
+	}
+	impl.mu.Unlock()
+
+	_, err := gt.SendQueueMessage(context.Background(), &QueueMessageItem{
+		ID:       "q-1",
+		ClientID: "test",
+		Channel:  "queue-ch",
+		Body:     []byte("payload"),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "send queue message failed")
+}
+
+func TestGRPCTransport_ListChannels_DefaultEmpty(t *testing.T) {
+	gt, _ := newTestTransport(t)
+
+	channels, err := gt.ListChannels(context.Background(), &ListChannelsRequest{
+		ClientID:    "test",
+		ChannelType: "events",
+	})
+	require.NoError(t, err)
+	assert.Empty(t, channels)
+}
+
+func TestGRPCTransport_DeleteChannel_GRPCError(t *testing.T) {
+	gt, impl := newTestTransport(t)
+
+	impl.mu.Lock()
+	impl.sendRequestFn = func(_ context.Context, _ *pb.Request) (*pb.Response, error) {
+		return nil, status.Error(codes.NotFound, "channel not found")
+	}
+	impl.mu.Unlock()
+
+	err := gt.DeleteChannel(context.Background(), &DeleteChannelRequest{
+		ClientID:    "test",
+		Channel:     "test-ch",
+		ChannelType: "events",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "delete channel failed")
 }
