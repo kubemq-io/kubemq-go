@@ -58,7 +58,8 @@ type KubeMQError struct {
 
 func (e *KubeMQError) Error() string {
 	var b []byte
-	if e.Operation != "" {
+	switch {
+	case e.Operation != "":
 		b = append(b, e.Operation...)
 		if e.Channel != "" {
 			b = append(b, " failed on channel \""...)
@@ -67,19 +68,20 @@ func (e *KubeMQError) Error() string {
 		} else {
 			b = append(b, " failed"...)
 		}
-	} else if e.Channel != "" {
+	case e.Channel != "":
 		b = append(b, "failed on channel \""...)
 		b = append(b, e.Channel...)
 		b = append(b, '"')
-	} else {
+	default:
 		b = append(b, "failed"...)
 	}
 	b = append(b, ": "...)
-	if e.Cause != nil {
+	switch {
+	case e.Cause != nil:
 		b = append(b, e.Cause.Error()...)
-	} else if e.Message != "" {
+	case e.Message != "":
 		b = append(b, e.Message...)
-	} else {
+	default:
 		b = append(b, e.Code.String()...)
 	}
 	if suggestion := ErrorSuggestions[e.Code]; suggestion != "" {

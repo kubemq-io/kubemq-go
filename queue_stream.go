@@ -28,7 +28,7 @@ func (m *QueueTransactionMessage) Ack() error {
 	return m.sendFn(&QueueDownstreamRequest{
 		RequestType:      QueueDownstreamAckRange,
 		RefTransactionID: m.TransactionID,
-		SequenceRange:    []int64{int64(seq)},
+		SequenceRange:    []int64{int64(seq)}, //nolint:gosec // G115: sequence numbers are non-negative and fit int64
 	})
 }
 
@@ -44,7 +44,7 @@ func (m *QueueTransactionMessage) Reject() error {
 	return m.sendFn(&QueueDownstreamRequest{
 		RequestType:      QueueDownstreamNAckRange,
 		RefTransactionID: m.TransactionID,
-		SequenceRange:    []int64{int64(seq)},
+		SequenceRange:    []int64{int64(seq)}, //nolint:gosec // G115: sequence numbers are non-negative and fit int64
 	})
 }
 
@@ -60,7 +60,7 @@ func (m *QueueTransactionMessage) ReQueue(channel string) error {
 	return m.sendFn(&QueueDownstreamRequest{
 		RequestType:      QueueDownstreamReQueueRange,
 		RefTransactionID: m.TransactionID,
-		SequenceRange:    []int64{int64(seq)},
+		SequenceRange:    []int64{int64(seq)}, //nolint:gosec // G115: sequence numbers are non-negative and fit int64
 		ReQueueChannel:   channel,
 	})
 }

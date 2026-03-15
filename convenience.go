@@ -62,6 +62,7 @@ func (o *publishOption) applyPublish(e *Event) {
 		o.fn(e)
 	}
 }
+
 func (o *publishOption) applyPublishStore(es *EventStore) {
 	if o.fnStore != nil {
 		o.fnStore(es)

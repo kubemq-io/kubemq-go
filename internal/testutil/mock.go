@@ -86,7 +86,7 @@ func (m *MockTransport) State() types.ConnectionState {
 }
 
 func (m *MockTransport) SetState(s types.ConnectionState) {
-	m.state.Store(int32(s))
+	m.state.Store(int32(s)) //nolint:gosec // G115: ConnectionState enum values fit int32
 }
 
 func (m *MockTransport) Close() error {

@@ -82,10 +82,10 @@ func writeTestCertFiles(t *testing.T, certPEM, keyPEM []byte) (certFile, keyFile
 	dir := t.TempDir()
 
 	certFile = filepath.Join(dir, "cert.pem")
-	require.NoError(t, os.WriteFile(certFile, certPEM, 0600))
+	require.NoError(t, os.WriteFile(certFile, certPEM, 0o600))
 
 	keyFile = filepath.Join(dir, "key.pem")
-	require.NoError(t, os.WriteFile(keyFile, keyPEM, 0600))
+	require.NoError(t, os.WriteFile(keyFile, keyPEM, 0o600))
 
 	return certFile, keyFile
 }
@@ -124,7 +124,7 @@ func TestBuildTLSConfig_CACertFile(t *testing.T) {
 	caPEM, _, _, _ := generateTestCA(t)
 	dir := t.TempDir()
 	caFile := filepath.Join(dir, "ca.pem")
-	require.NoError(t, os.WriteFile(caFile, caPEM, 0600))
+	require.NoError(t, os.WriteFile(caFile, caPEM, 0o600))
 
 	cfg, err := buildTLSConfig(&types.TLSConfig{CACertFile: caFile}, false)
 	require.NoError(t, err)
@@ -179,7 +179,7 @@ func TestBuildTLSConfig_MTLS_Files(t *testing.T) {
 
 	dir := t.TempDir()
 	caFile := filepath.Join(dir, "ca.pem")
-	require.NoError(t, os.WriteFile(caFile, caPEM, 0600))
+	require.NoError(t, os.WriteFile(caFile, caPEM, 0o600))
 
 	cfg, err := buildTLSConfig(&types.TLSConfig{
 		CACertFile: caFile,
@@ -226,8 +226,8 @@ func TestMakeFileReloader_FileChanged(t *testing.T) {
 	require.NoError(t, err)
 
 	certPEM2, keyPEM2 := generateTestCert(t, ca, caKey)
-	require.NoError(t, os.WriteFile(certFile, certPEM2, 0600))
-	require.NoError(t, os.WriteFile(keyFile, keyPEM2, 0600))
+	require.NoError(t, os.WriteFile(certFile, certPEM2, 0o600))
+	require.NoError(t, os.WriteFile(keyFile, keyPEM2, 0o600))
 
 	cert2, err := reloader(nil)
 	require.NoError(t, err)
