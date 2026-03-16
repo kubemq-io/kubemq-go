@@ -67,3 +67,8 @@ func main() {
 		fmt.Printf("  body=%s metadata=%s\n", m.Body, m.Metadata)
 	}
 }
+
+// Expected output:
+// Sent: id=<message-id>
+// Received: 1 messages
+//   body=hello queue metadata=greeting

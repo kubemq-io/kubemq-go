@@ -72,3 +72,8 @@ func main() {
 		log.Fatal("Timed out waiting for event")
 	}
 }
+
+// Expected output:
+// Event published
+// Received: channel=go-events.basic-pubsub body=hello from Go SDK metadata=greeting
+// Event received successfully

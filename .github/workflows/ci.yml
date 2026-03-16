@@ -136,6 +136,11 @@ jobs:
             -v \
             ./...
 
+      - name: Smoke-test examples
+        run: |
+          timeout 30 go run ./examples/connection/connect/ || true
+          timeout 30 go run ./examples/connection/ping/
+
   # ─── Coverage ───────────────────────────────────────────
   coverage:
     name: Coverage

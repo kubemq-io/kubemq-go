@@ -71,3 +71,7 @@ func main() {
 
 	<-done
 }
+
+// Expected output:
+// Command received: channel=go-commands.send-command body=do-something
+// Command response: executed=true
