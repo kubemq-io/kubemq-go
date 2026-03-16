@@ -70,3 +70,7 @@ func main() {
 
 	<-done
 }
+
+// Expected output:
+// Query received: channel=go-queries.send-query body=fetch-data
+// Query response: executed=true body={"result":"data","status":"ok"}
