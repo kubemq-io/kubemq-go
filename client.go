@@ -45,6 +45,15 @@ type Client struct {
 // The server address is provided via WithAddress(host, port).
 // For local development, the default is localhost:50000.
 //
+// Parameters:
+//   - ctx: controls the lifetime of the initial connection attempt. If the
+//     context is cancelled or its deadline expires before the connection is
+//     established, NewClient returns a TIMEOUT or CANCELLATION error. The
+//     context is NOT stored — ongoing operations use their own contexts.
+//   - op: zero or more Option functions that override defaults. When no options
+//     are provided, the client uses the defaults listed below. Options are
+//     applied in order; the last write wins for each setting.
+//
 // Default configuration (override with Option functions):
 //   - address: localhost:50000
 //   - clientId: auto-generated UUID
@@ -54,6 +63,17 @@ type Client struct {
 //   - retryPolicy: 3 retries with exponential backoff
 //   - waitForReady: true
 //
+// Returns a connected *Client on success. The caller must call Close() when
+// done to release the underlying gRPC connection. On failure, returns nil and
+// a *KubeMQError describing the issue.
+//
+// Possible errors:
+//   - VALIDATION: host is empty, port is 0, or an Option sets an invalid value
+//   - TRANSIENT: temporary network failure during initial connection (retryable)
+//   - TIMEOUT: connection deadline exceeded (ctx deadline or connectionTimeout)
+//   - AUTHENTICATION: TLS handshake failed or invalid credentials
+//   - CANCELLATION: ctx was cancelled before connection completed
+//
 // Example:
 //
 //	client, err := kubemq.NewClient(ctx,
@@ -61,6 +81,8 @@ type Client struct {
 //	)
 //	if err != nil { log.Fatal(err) }
 //	defer client.Close()
+//
+// See also: Client, Close, Option, WithAddress.
 func NewClient(ctx context.Context, op ...Option) (*Client, error) {
 	opts := GetDefaultOptions()
 	for _, o := range op {

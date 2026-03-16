@@ -7,6 +7,19 @@ import (
 
 // Command is an outbound command request. It is NOT safe for concurrent use —
 // create a new Command for each send operation.
+//
+// Fields:
+//   - Id: unique request identifier. Auto-generated UUID if empty at send time.
+//   - Channel: target channel name (required unless WithDefaultChannel is set).
+//   - Metadata: arbitrary string metadata delivered to the subscriber.
+//   - Body: binary payload delivered to the subscriber.
+//   - Timeout: server-side deadline for receiving a subscriber response. If zero,
+//     defaults to 5s. The server returns a TIMEOUT error if no response arrives.
+//   - ClientId: sender identifier. Auto-populated from client defaults if empty.
+//   - Tags: key-value pairs delivered alongside the command.
+//   - Span: OpenTelemetry span context for distributed tracing (internal use).
+//
+// See also: SendCommand, CommandResponse, CommandReceive.
 type Command struct {
 	Id       string
 	Channel  string
@@ -86,6 +99,19 @@ func (c *Command) Validate() error {
 // CommandReceive is a received command request delivered to subscription
 // callbacks. It is safe to read from multiple goroutines but must not be
 // modified after receipt.
+//
+// Fields:
+//   - Id: the original Command.Id set by the sender.
+//   - ClientId: the sender's client identifier.
+//   - Channel: the channel this command was published to.
+//   - Metadata: string metadata from the sender.
+//   - Body: binary payload from the sender.
+//   - ResponseTo: internal routing address used by SendResponse to deliver the
+//     reply back to the sender. Pass this value to Response.ResponseTo.
+//   - Tags: key-value pairs from the sender.
+//   - Span: OpenTelemetry span context for distributed tracing.
+//
+// See also: SubscribeToCommands, SendResponse, Response.
 type CommandReceive struct {
 	Id         string
 	ClientId   string
@@ -103,8 +129,21 @@ func (cr *CommandReceive) String() string {
 		cr.Id, cr.ClientId, cr.Channel, cr.Metadata, string(cr.Body), cr.ResponseTo, cr.Tags)
 }
 
-// CommandResponse contains the result of a command execution.
-// Immutable after construction. Safe to read from multiple goroutines.
+// CommandResponse contains the result of a command execution returned by
+// SendCommand. Immutable after construction. Safe to read from multiple
+// goroutines.
+//
+// Fields:
+//   - CommandId: the original Command.Id echoed back for correlation.
+//   - ResponseClientId: the ClientId of the subscriber that handled the command.
+//   - Executed: true if the subscriber indicated successful execution.
+//   - ExecutedAt: timestamp when the subscriber processed the command.
+//   - Error: non-empty if the subscriber reported a processing error. This is
+//     the application-level error message set by the subscriber, not a transport
+//     error.
+//   - Tags: key-value pairs returned by the subscriber.
+//
+// See also: SendCommand, Command, SubscribeToCommands.
 type CommandResponse struct {
 	CommandId        string
 	ResponseClientId string

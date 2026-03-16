@@ -11,13 +11,39 @@ import (
 )
 
 // SubscribeToEventsStore subscribes to persistent events on the given channel.
+// Unlike SubscribeToEvents, event store subscriptions replay historical events
+// from a configurable start position and guarantee at-least-once delivery.
 //
-// Wildcard patterns are NOT supported for Events Store subscriptions.
-// The channel must be an exact channel name.
+// Parameters:
+//   - ctx: parent context. Cancelling ctx tears down the subscription.
+//   - channel: the exact channel name to subscribe to (required). Wildcard
+//     patterns are NOT supported for event store subscriptions.
+//   - group: enables load-balanced consumption. When multiple subscribers share
+//     the same group on the same channel, each event is delivered to exactly one
+//     subscriber. Pass "" for broadcast mode.
+//   - startOpt: controls the replay start position (required). One of:
+//   - StartFromNewEvents(): only receive new events published after subscribing.
+//   - StartFromFirstEvent(): replay all stored events from the beginning.
+//   - StartFromLastEvent(): replay the last stored event, then continue.
+//   - StartFromSequence(n): replay from sequence number n onward (n must be > 0).
+//   - StartFromTime(t): replay events stored at or after time t.
+//   - StartFromTimeDelta(d): replay events from now minus duration d.
+//   - opts: subscription options. WithOnEventStoreReceive is required — it sets
+//     the callback for each received event. WithOnError is optional.
 //
-// The startOpt parameter controls replay position: StartFromNewEvents(),
-// StartFromFirstEvent(), StartFromLastEvent(), StartFromSequence(n),
-// StartFromTime(t), or StartFromTimeDelta(d).
+// Returns a *Subscription on success. The subscription automatically reconnects
+// on transient errors when auto-reconnect is enabled.
+//
+// Possible errors:
+//   - VALIDATION: channel is empty, startOpt is undefined, sequence/time value
+//     is invalid, or WithOnEventStoreReceive handler is not provided
+//   - TRANSIENT: temporary network issue establishing the subscription (retryable)
+//   - AUTHENTICATION: invalid or missing auth token
+//   - AUTHORIZATION: insufficient permissions for this channel
+//   - CANCELLATION: ctx was cancelled before subscription was established
+//
+// See also: EventStoreReceive, SendEventStore, EventStore, Subscription,
+// StartFromNewEvents, StartFromFirstEvent, StartFromSequence.
 func (c *Client) SubscribeToEventsStore(ctx context.Context, channel, group string, startOpt SubscriptionOption, opts ...SubscribeOption) (*Subscription, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
@@ -121,8 +147,31 @@ func (c *Client) SubscribeToEventsStore(ctx context.Context, channel, group stri
 	return newSubscription(uuid.New(), cancel, done), nil
 }
 
-// SendEventStore sends an event to the event store channel.
-// Validates the event store message before sending.
+// SendEventStore sends a persistent event to the event store channel. Unlike
+// SendEvent, the server persists the message and subscribers can replay it from
+// any point in history.
+//
+// Parameters:
+//   - ctx: controls the deadline for the send operation. If the context expires
+//     before the server confirms persistence, a TIMEOUT error is returned.
+//   - event: the event store message to send. EventStore.Channel is required
+//     unless WithDefaultChannel is set. EventStore.Id and EventStore.ClientId
+//     are auto-populated if empty. At least one of Body or Metadata must be set.
+//
+// Returns an *EventStoreResult containing the confirmation. Check
+// EventStoreResult.Sent to verify the event was persisted. If
+// EventStoreResult.Err is non-nil, the server failed to persist the event.
+//
+// Possible errors:
+//   - VALIDATION: channel is empty, body and metadata are both nil/empty
+//   - TRANSIENT: temporary network issue (retryable)
+//   - TIMEOUT: operation exceeded ctx deadline
+//   - AUTHENTICATION: invalid or missing auth token
+//   - AUTHORIZATION: insufficient permissions for this channel
+//   - BACKPRESSURE: server or client buffer is full (retryable after backoff)
+//
+// See also: EventStore, EventStoreResult, SubscribeToEventsStore,
+// SendEventStoreStream.
 func (c *Client) SendEventStore(ctx context.Context, event *EventStore) (*EventStoreResult, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
