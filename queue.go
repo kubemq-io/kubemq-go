@@ -5,6 +5,24 @@ import "fmt"
 // QueueMessage is an outbound queue message. It is NOT safe for concurrent
 // use — create a new QueueMessage for each send operation. Do not share
 // QueueMessage instances across goroutines.
+//
+// Fields:
+//   - ID: unique message identifier. Auto-generated UUID if empty at send time.
+//   - ClientID: sender identifier. Auto-populated from client defaults if empty.
+//   - Channel: target queue channel name (required unless WithDefaultChannel is set).
+//     Wildcards are not supported for queue channels.
+//   - Metadata: arbitrary string metadata stored with the message.
+//   - Body: binary payload. At least one of Body or Metadata must be non-empty.
+//   - Tags: key-value string pairs stored alongside the message, useful for
+//     filtering or routing.
+//   - Policy: optional delivery policy controlling expiration, delay, and
+//     dead-letter routing. Nil means no policy (message never expires, no delay).
+//   - Attributes: receive-side metadata populated by the server when the message
+//     is received (nil on outbound messages). Contains sequence number, timestamp,
+//     receive count, etc.
+//
+// See also: SendQueueMessage, ReceiveQueueMessages, QueuePolicy,
+// QueueMessageAttributes.
 type QueueMessage struct {
 	ID         string
 	ClientID   string
@@ -123,6 +141,21 @@ func (qm *QueueMessage) String() string {
 }
 
 // QueuePolicy defines delivery policy for queue messages.
+//
+// Fields:
+//   - ExpirationSeconds: message time-to-live in seconds. The message is
+//     automatically removed from the queue after this duration. Zero means
+//     no expiration (message persists until consumed).
+//   - DelaySeconds: delivery delay in seconds. The message is invisible to
+//     consumers until the delay elapses. Zero means immediate availability.
+//   - MaxReceiveCount: maximum number of times the message can be received
+//     (dequeued) before it is moved to the dead-letter queue. Zero means
+//     unlimited receive attempts.
+//   - MaxReceiveQueue: dead-letter queue channel name. When MaxReceiveCount is
+//     exceeded, the message is moved to this queue. Empty means the message is
+//     discarded instead.
+//
+// See also: QueueMessage, SendQueueMessage.
 type QueuePolicy struct {
 	ExpirationSeconds int
 	DelaySeconds      int
@@ -130,7 +163,27 @@ type QueuePolicy struct {
 	MaxReceiveQueue   string
 }
 
-// QueueMessageAttributes contains receive-side metadata populated by the server.
+// QueueMessageAttributes contains receive-side metadata populated by the server
+// when a message is dequeued. This struct is nil on outbound messages and only
+// present on messages returned by ReceiveQueueMessages or QueueDownstream.
+//
+// Fields:
+//   - Timestamp: Unix timestamp (nanoseconds) when the message was originally
+//     enqueued.
+//   - Sequence: monotonically increasing sequence number assigned by the server.
+//     Unique within the queue channel.
+//   - MD5OfBody: MD5 hash of the message body, useful for integrity verification.
+//   - ReceiveCount: number of times this message has been received (dequeued).
+//     Increments on each receive; useful for detecting poison messages.
+//   - ReRouted: true if this message was moved from another queue (e.g.,
+//     dead-letter routing).
+//   - ReRoutedFromQueue: the original queue channel name if ReRouted is true.
+//   - ExpirationAt: Unix timestamp (nanoseconds) when the message expires.
+//     Zero if no expiration policy is set.
+//   - DelayedTo: Unix timestamp (nanoseconds) until which the message was
+//     delayed. Zero if no delay policy is set.
+//
+// See also: QueueMessage, ReceiveQueueMessages.
 type QueueMessageAttributes struct {
 	Timestamp         int64
 	Sequence          uint64
@@ -155,6 +208,19 @@ func (qms *QueueMessages) Add(msg *QueueMessage) *QueueMessages {
 
 // SendQueueMessageResult contains the result of a single queue message send.
 // Immutable after construction. Safe to read from multiple goroutines.
+//
+// Fields:
+//   - MessageID: the server-assigned or client-provided message identifier.
+//   - SentAt: Unix timestamp (nanoseconds) when the server accepted the message.
+//   - ExpirationAt: Unix timestamp (nanoseconds) when the message will expire.
+//     Zero if no expiration policy is set.
+//   - DelayedTo: Unix timestamp (nanoseconds) until which the message is delayed.
+//     Zero if no delay policy is set.
+//   - IsError: true if the server rejected this specific message. When true,
+//     Error contains the reason (e.g., queue does not exist).
+//   - Error: human-readable error message. Empty when IsError is false.
+//
+// See also: SendQueueMessage, SendQueueMessages, QueueMessage.
 type SendQueueMessageResult struct {
 	MessageID    string
 	SentAt       int64
@@ -165,6 +231,19 @@ type SendQueueMessageResult struct {
 }
 
 // ReceiveQueueMessagesRequest defines parameters for receiving queue messages.
+//
+// Fields:
+//   - RequestID: optional correlation ID for tracing. Auto-generated if empty.
+//   - ClientID: consumer identifier. Auto-populated from client defaults if empty.
+//   - Channel: the queue channel to receive from (required, no wildcards).
+//   - MaxNumberOfMessages: maximum number of messages to return. Must be > 0.
+//   - WaitTimeSeconds: how long the server long-polls (in seconds) for messages
+//     to become available. Must be > 0. If no messages arrive within this
+//     duration, an empty response is returned (not an error).
+//   - IsPeak: if true, messages are peeked but not removed from the queue.
+//     Peeked messages remain available for subsequent receive calls.
+//
+// See also: ReceiveQueueMessages, ReceiveQueueMessagesResponse.
 type ReceiveQueueMessagesRequest struct {
 	RequestID           string
 	ClientID            string
@@ -175,6 +254,21 @@ type ReceiveQueueMessagesRequest struct {
 }
 
 // ReceiveQueueMessagesResponse contains the results of a receive operation.
+//
+// Fields:
+//   - RequestID: echoed from ReceiveQueueMessagesRequest.RequestID.
+//   - Messages: the received queue messages. Each message includes Attributes
+//     with server-side metadata (sequence, timestamp, receive count, etc.).
+//     May be empty if the wait timeout elapsed with no messages available.
+//   - MessagesReceived: total count of messages returned in this response.
+//   - MessagesExpired: count of messages that expired during the wait period
+//     (informational).
+//   - IsPeak: echoes the IsPeak flag from the request.
+//   - IsError: true if the server encountered an error during the receive
+//     operation (e.g., channel does not exist).
+//   - Error: human-readable error message. Empty when IsError is false.
+//
+// See also: ReceiveQueueMessages, ReceiveQueueMessagesRequest, QueueMessage.
 type ReceiveQueueMessagesResponse struct {
 	RequestID        string
 	Messages         []*QueueMessage

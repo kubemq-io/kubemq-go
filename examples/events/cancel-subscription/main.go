@@ -49,6 +49,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Allow time for subscription to register on server
+	time.Sleep(1 * time.Second)
+
 	// Send an event and wait for it.
 	err = client.SendEvent(ctx, kubemq.NewEvent().
 		SetChannel(channel).

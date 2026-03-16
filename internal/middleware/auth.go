@@ -60,7 +60,9 @@ func (tc *tokenCache) getToken(ctx context.Context) (string, error) {
 	tc.expiresAt = expiresAt
 	tc.valid = true
 
-	tc.logger.Debug("auth token refreshed", "token_present", true, "expires_at_set", !expiresAt.IsZero())
+	if tc.logger != nil {
+		tc.logger.Debug("auth token refreshed", "token_present", true, "expires_at_set", !expiresAt.IsZero())
+	}
 
 	if tc.onRefresh != nil && !expiresAt.IsZero() {
 		tc.onRefresh(expiresAt)
@@ -74,7 +76,9 @@ func (tc *tokenCache) invalidate() {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
 	tc.valid = false
-	tc.logger.Debug("auth token invalidated", "token_present", false)
+	if tc.logger != nil {
+		tc.logger.Debug("auth token invalidated", "token_present", false)
+	}
 }
 
 func (tc *tokenCache) classifyProviderError(err error) error {
@@ -243,7 +247,9 @@ func (a *authInterceptor) proactiveRefreshLoop(ctx context.Context) {
 			a.cache.invalidate()
 			_, err := a.cache.getToken(ctx)
 			if err != nil {
+				if a.logger != nil {
 				a.logger.Error("proactive token refresh failed", "error", err)
+			}
 				a.refreshTimer.Reset(5 * time.Second)
 				continue
 			}

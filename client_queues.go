@@ -10,8 +10,34 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// SendQueueMessage sends a single message to a queue.
-// Validates the message before sending.
+// SendQueueMessage sends a single message to a queue channel.
+// Unlike events, queue messages are persistent — they are stored until a
+// consumer receives and acknowledges them, or until they expire.
+//
+// Parameters:
+//   - ctx: controls the deadline for the send operation. If the context expires
+//     before the server acknowledges receipt, a TIMEOUT error is returned.
+//   - msg: the queue message to send. QueueMessage.Channel is required unless
+//     the client was created with WithDefaultChannel. QueueMessage.ID and
+//     QueueMessage.ClientID are auto-populated if empty. At least one of Body
+//     or Metadata must be set. An optional QueueMessage.Policy controls
+//     expiration, delay, and dead-letter routing.
+//
+// Returns a *SendQueueMessageResult containing the server-assigned message ID,
+// send timestamp, and any computed expiration/delay times. Check
+// SendQueueMessageResult.IsError to detect server-side rejections (e.g., queue
+// does not exist).
+//
+// Possible errors:
+//   - VALIDATION: channel is empty, body and metadata are both nil/empty
+//   - TRANSIENT: temporary network issue (retryable)
+//   - TIMEOUT: operation exceeded ctx deadline
+//   - AUTHENTICATION: invalid or missing auth token
+//   - AUTHORIZATION: insufficient permissions for this channel
+//   - BACKPRESSURE: server or client buffer is full (retryable after backoff)
+//
+// See also: QueueMessage, SendQueueMessageResult, SendQueueMessages,
+// ReceiveQueueMessages.
 func (c *Client) SendQueueMessage(ctx context.Context, msg *QueueMessage) (*SendQueueMessageResult, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
@@ -143,8 +169,39 @@ func (c *Client) SendQueueMessages(ctx context.Context, msgs []*QueueMessage) ([
 	return out, nil
 }
 
-// ReceiveQueueMessages receives messages from a queue.
-// Validates the channel before receiving.
+// ReceiveQueueMessages receives messages from a queue using a pull-based model.
+// The call blocks (long-polls) until at least one message is available, the wait
+// timeout expires, or the context is cancelled.
+//
+// Parameters:
+//   - ctx: controls the overall deadline. If ctx expires before a response is
+//     received, a context.DeadlineExceeded error is returned.
+//   - req: receive configuration:
+//   - Channel: the queue channel to receive from (required, no wildcards).
+//   - MaxNumberOfMessages: maximum number of messages to return in one call.
+//     Must be > 0.
+//   - WaitTimeSeconds: how long the server waits (in seconds) for messages
+//     to become available before returning an empty response. Must be > 0.
+//   - IsPeak: if true, messages are peeked (not removed from the queue);
+//     if false, messages are dequeued.
+//   - ClientID: auto-populated from client defaults if empty.
+//   - RequestID: optional correlation ID.
+//
+// Returns a *ReceiveQueueMessagesResponse containing the received messages and
+// counts. Check ReceiveQueueMessagesResponse.IsError for server-side errors.
+// An empty Messages slice with IsError=false means the wait timeout elapsed
+// with no messages available.
+//
+// Possible errors:
+//   - VALIDATION: channel is empty, MaxNumberOfMessages <= 0, WaitTimeSeconds <= 0
+//   - TRANSIENT: temporary network issue (retryable)
+//   - TIMEOUT: operation exceeded ctx deadline
+//   - AUTHENTICATION: invalid or missing auth token
+//   - AUTHORIZATION: insufficient permissions for this channel
+//   - NOT_FOUND: queue channel does not exist
+//
+// See also: ReceiveQueueMessagesRequest, ReceiveQueueMessagesResponse,
+// QueueMessage, SendQueueMessage, PollQueue.
 func (c *Client) ReceiveQueueMessages(ctx context.Context, req *ReceiveQueueMessagesRequest) (*ReceiveQueueMessagesResponse, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
