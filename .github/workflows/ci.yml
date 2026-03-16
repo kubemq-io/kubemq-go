@@ -1,0 +1,198 @@
+# .github/workflows/ci.yml
+# Owned by: 04-testing-spec.md (REQ-TEST-3)
+# CI pipeline for KubeMQ Go SDK v2
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION_MINIMUM: "1.23"
+  GOLANGCI_LINT_VERSION: "v2.1"
+  COVERAGE_THRESHOLD: 40
+
+jobs:
+  # ─── Lint ───────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION_MINIMUM }}
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          args: --timeout=5m
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+  # ─── Unit Tests ─────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests (Go ${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.23", "1.24"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Run unit tests
+        run: |
+          go test \
+            -race \
+            -count=1 \
+            -timeout 30s \
+            -coverprofile=coverage.out \
+            -coverpkg=./... \
+            ./...
+
+      - name: Exclude generated code from coverage
+        run: |
+          grep -v '\.pb\.go' coverage.out > coverage-filtered.out || true
+          grep -v '_gen\.go' coverage-filtered.out > coverage-clean.out || true
+          mv coverage-clean.out coverage.out
+
+      - name: Upload coverage artifact
+        if: matrix.go-version == env.GO_VERSION_MINIMUM
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 7
+
+  # ─── Integration Tests ──────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, unit-tests]
+    services:
+      kubemq:
+        image: kubemq/kubemq:latest
+        ports:
+          - 50000:50000
+          - 8080:8080
+          - 9090:9090
+        env:
+          KUBEMQ_TOKEN: ""
+        options: >-
+          --health-cmd "wget -q --spider http://localhost:8080/health || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION_MINIMUM }}
+          cache: true
+
+      - name: Wait for KubeMQ server
+        run: |
+          for i in $(seq 1 30); do
+            if wget -q --spider http://localhost:8080/health 2>/dev/null; then
+              echo "KubeMQ server is ready"
+              break
+            fi
+            echo "Waiting for KubeMQ server... ($i/30)"
+            sleep 2
+          done
+
+      - name: Run integration tests
+        env:
+          KUBEMQ_HOST: localhost
+        run: |
+          go test \
+            -race \
+            -count=1 \
+            -timeout 5m \
+            -tags integration \
+            -v \
+            ./...
+
+  # ─── Coverage ───────────────────────────────────────────
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION_MINIMUM }}
+          cache: true
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage
+
+      - name: Check coverage threshold
+        run: |
+          TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print substr($3, 1, length($3)-1)}')
+          echo "Total coverage: ${TOTAL}%"
+          echo "Threshold: ${COVERAGE_THRESHOLD}%"
+
+          if awk "BEGIN {exit !($TOTAL < $COVERAGE_THRESHOLD)}"; then
+            echo "::error::Coverage ${TOTAL}% is below threshold ${COVERAGE_THRESHOLD}%"
+            exit 1
+          fi
+
+          echo "Coverage ${TOTAL}% meets threshold ${COVERAGE_THRESHOLD}%"
+
+      - name: Upload to Codecov
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.out
+          flags: unittests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ─── Vulnerability Scan ─────────────────────────────────
+  govulncheck:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION_MINIMUM }}
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...

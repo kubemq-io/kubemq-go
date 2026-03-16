@@ -13,15 +13,36 @@ import (
 // SubscribeToEvents subscribes to events on the given channel, returning a
 // Subscription that delivers events via the WithOnEvent handler and supports Unsubscribe().
 //
-// Wildcard patterns are supported in the channel parameter:
-//
+// Parameters:
+//   - ctx: parent context. Cancelling ctx tears down the subscription (equivalent
+//     to calling Subscription.Cancel). The subscription goroutine will drain and
+//     the Subscription.Done channel will close.
+//   - channel: the channel name to subscribe to (must not be empty).
+//     Wildcard patterns are supported:
 //   - "orders.*"  matches "orders.created", "orders.updated", etc. (single-level)
 //   - "orders.>"  matches "orders.created", "orders.us.created", etc. (multi-level)
 //   - "*"         matches all single-segment channels
+//   - group: enables load-balanced consumption. When multiple subscribers share
+//     the same group on the same channel, each event is delivered to exactly one
+//     subscriber in the group (competing consumers). Pass "" for broadcast mode
+//     where every subscriber receives every event.
+//   - opts: subscription options. WithOnEvent is required — it sets the callback
+//     invoked for each received event. The callback is called sequentially on a
+//     dedicated goroutine; blocking the callback delays subsequent events.
+//     WithOnError is optional — if not set, errors are logged at ERROR level.
 //
-// The group parameter enables load-balanced consumption: when multiple
-// subscribers share the same group on the same channel, each message is
-// delivered to exactly one subscriber in the group.
+// Returns a *Subscription on success. Call Subscription.Unsubscribe() or
+// Subscription.Cancel() to stop receiving events. The subscription automatically
+// reconnects on transient errors when the client has auto-reconnect enabled.
+//
+// Possible errors:
+//   - VALIDATION: channel is empty, or WithOnEvent handler is not provided
+//   - TRANSIENT: temporary network issue establishing the subscription (retryable)
+//   - AUTHENTICATION: invalid or missing auth token
+//   - AUTHORIZATION: insufficient permissions for this channel
+//   - CANCELLATION: ctx was cancelled before subscription was established
+//
+// See also: Event, SendEvent, Subscription, WithOnEvent, WithOnError.
 func (c *Client) SubscribeToEvents(ctx context.Context, channel, group string, opts ...SubscribeOption) (*Subscription, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
@@ -92,7 +113,29 @@ func (c *Client) SubscribeToEvents(ctx context.Context, channel, group string, o
 }
 
 // SendEvent sends a fire-and-forget event to the specified channel.
-// Validates the event before sending.
+// The event is delivered to all subscribers on the channel (or to one subscriber
+// per group for grouped subscriptions). There is no delivery confirmation — if
+// no subscriber is connected, the event is silently dropped.
+//
+// Parameters:
+//   - ctx: controls the deadline for the send operation. If the context expires
+//     before the event is sent, a TIMEOUT error is returned.
+//   - event: the event to send. Event.Channel is required unless the client was
+//     created with WithDefaultChannel. Event.Id and Event.ClientId are
+//     auto-populated if empty. At least one of Body or Metadata must be set.
+//
+// The event is validated before sending. If validation fails, the event is not
+// sent and a VALIDATION error is returned immediately (no network call).
+//
+// Possible errors:
+//   - VALIDATION: channel is empty, body and metadata are both nil/empty
+//   - TRANSIENT: temporary network issue (retryable)
+//   - TIMEOUT: operation exceeded ctx deadline
+//   - AUTHENTICATION: invalid or missing auth token
+//   - AUTHORIZATION: insufficient permissions for this channel
+//   - BACKPRESSURE: server or client buffer is full (retryable after backoff)
+//
+// See also: Event, SubscribeToEvents, SendEventStream.
 func (c *Client) SendEvent(ctx context.Context, event *Event) error {
 	if err := c.checkClosed(); err != nil {
 		return err

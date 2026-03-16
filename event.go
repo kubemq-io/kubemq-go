@@ -5,6 +5,22 @@ import "fmt"
 // Event is an outbound event message. It is NOT safe for concurrent use —
 // create a new Event for each send operation. Do not share Event instances
 // across goroutines.
+//
+// Fields:
+//   - Id: unique event identifier. Auto-generated UUID if empty at send time.
+//   - Channel: target channel name (required unless WithDefaultChannel is set).
+//     Wildcards are not supported for publishing; they are only valid for
+//     subscriptions.
+//   - Metadata: arbitrary string metadata delivered to subscribers.
+//   - Body: binary payload. At least one of Body or Metadata must be non-empty.
+//   - ClientId: sender identifier. Auto-populated from client defaults if empty.
+//   - Tags: key-value string pairs delivered alongside the event.
+//
+// Events are fire-and-forget: there is no delivery confirmation. If no
+// subscriber is connected, the event is silently dropped. For persistent
+// delivery, use EventStore instead.
+//
+// See also: SendEvent, SubscribeToEvents, EventStore.
 type Event struct {
 	Id       string
 	Channel  string
@@ -79,7 +95,16 @@ func (e *Event) String() string {
 		e.Id, e.Channel, e.Metadata, e.Body, e.ClientId, e.Tags)
 }
 
-// EventStreamResult represents a server acknowledgement for a streamed event.
+// EventStreamResult represents a server acknowledgement for a streamed event,
+// received via EventStreamHandle.Errors or EventStoreStreamHandle.Results.
+//
+// Fields:
+//   - EventID: the Id of the event this result corresponds to.
+//   - Sent: true if the server accepted the event.
+//   - Error: non-empty if the server rejected the event. Contains the reason
+//     for rejection (e.g., channel validation failure).
+//
+// See also: SendEventStream, SendEventStoreStream.
 type EventStreamResult struct {
 	EventID string
 	Sent    bool

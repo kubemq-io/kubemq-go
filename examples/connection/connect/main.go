@@ -26,7 +26,7 @@ func main() {
 
 	// Create a KubeMQ client with basic configuration.
 	client, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithAddress("localhost", 50000), // TODO: Replace with your KubeMQ server address
 		kubemq.WithClientId("go-connection-connect-client"),
 	)
 	if err != nil {

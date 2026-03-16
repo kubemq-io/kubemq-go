@@ -7,6 +7,24 @@ import (
 
 // Query is an outbound query request. It is NOT safe for concurrent use —
 // create a new Query for each send operation.
+//
+// Fields:
+//   - Id: unique request identifier. Auto-generated UUID if empty at send time.
+//   - Channel: target channel name (required unless WithDefaultChannel is set).
+//   - Metadata: arbitrary string metadata delivered to the subscriber.
+//   - Body: binary payload delivered to the subscriber.
+//   - Timeout: server-side deadline for receiving a subscriber response. If zero,
+//     defaults to 5s. The server returns a TIMEOUT error if no response arrives.
+//   - ClientId: sender identifier. Auto-populated from client defaults if empty.
+//   - CacheKey: when non-empty, enables response caching on the server. Subsequent
+//     queries with the same key return the cached response without invoking the
+//     subscriber until CacheTTL expires.
+//   - CacheTTL: how long the server caches the response. Only meaningful when
+//     CacheKey is set.
+//   - Tags: key-value pairs delivered alongside the query.
+//   - Span: OpenTelemetry span context for distributed tracing (internal use).
+//
+// See also: SendQuery, QueryResponse, QueryReceive.
 type Query struct {
 	Id       string
 	Channel  string
@@ -100,6 +118,19 @@ func (q *Query) Validate() error {
 // QueryReceive is a received query request delivered to subscription
 // callbacks. It is safe to read from multiple goroutines but must not be
 // modified after receipt.
+//
+// Fields:
+//   - Id: the original Query.Id set by the sender.
+//   - Channel: the channel this query was published to.
+//   - ClientId: the sender's client identifier.
+//   - Metadata: string metadata from the sender.
+//   - Body: binary payload from the sender.
+//   - ResponseTo: internal routing address used by SendResponse to deliver the
+//     reply back to the sender. Pass this value to Response.ResponseTo.
+//   - Tags: key-value pairs from the sender.
+//   - Span: OpenTelemetry span context for distributed tracing.
+//
+// See also: SubscribeToQueries, SendResponse, Response.
 type QueryReceive struct {
 	Id         string
 	Channel    string
@@ -117,8 +148,24 @@ func (qr *QueryReceive) String() string {
 		qr.Id, qr.ClientId, qr.Channel, qr.Metadata, string(qr.Body), qr.ResponseTo, qr.Tags)
 }
 
-// QueryResponse contains the result of a query execution.
-// Immutable after construction. Safe to read from multiple goroutines.
+// QueryResponse contains the result of a query execution returned by
+// SendQuery. Immutable after construction. Safe to read from multiple
+// goroutines.
+//
+// Fields:
+//   - QueryId: the original Query.Id echoed back for correlation.
+//   - Executed: true if the subscriber indicated successful execution.
+//   - ExecutedAt: timestamp when the subscriber processed the query.
+//   - Metadata: string metadata returned by the subscriber.
+//   - ResponseClientId: the ClientId of the subscriber that handled the query.
+//   - Body: binary response payload from the subscriber.
+//   - CacheHit: true if this response was served from the server's cache
+//     (the subscriber was not invoked). Only relevant when Query.CacheKey is set.
+//   - Error: non-empty if the subscriber reported a processing error. This is
+//     the application-level error message, not a transport error.
+//   - Tags: key-value pairs returned by the subscriber.
+//
+// See also: SendQuery, Query, SubscribeToQueries.
 type QueryResponse struct {
 	QueryId          string
 	Executed         bool

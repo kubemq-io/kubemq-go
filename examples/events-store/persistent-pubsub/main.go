@@ -52,6 +52,9 @@ func main() {
 	}
 	defer sub.Unsubscribe()
 
+	// Allow subscription to fully establish before publishing.
+	time.Sleep(time.Second)
+
 	// Send a persistent event.
 	result, err := client.SendEventStore(ctx, kubemq.NewEventStore().
 		SetChannel(channel).

@@ -124,18 +124,20 @@ func TestConvertCommandRoundTrip(t *testing.T) {
 
 func TestConvertCommandResult(t *testing.T) {
 	t.Run("successful execution", func(t *testing.T) {
+		// Timestamp is in nanoseconds (consistent with KubeMQ protocol)
+		tsNano := int64(1700000000_000000000) // 2023-11-14T22:13:20Z in nanoseconds
 		pr := &pb.Response{
 			RequestID: "cmd-1",
 			ClientID:  "responder",
 			Executed:  true,
-			Timestamp: 1000,
+			Timestamp: tsNano,
 			Tags:      map[string]string{"k": "v"},
 		}
 		result := CommandResultFromProto(pr)
 		assert.Equal(t, "cmd-1", result.CommandID)
 		assert.Equal(t, "responder", result.ResponseClientID)
 		assert.True(t, result.Executed)
-		assert.Equal(t, time.Unix(1000, 0), result.ExecutedAt)
+		assert.Equal(t, time.Unix(0, tsNano), result.ExecutedAt)
 		assert.Equal(t, map[string]string{"k": "v"}, result.Tags)
 	})
 
@@ -179,6 +181,8 @@ func TestConvertQueryRoundTrip(t *testing.T) {
 
 func TestConvertQueryResult(t *testing.T) {
 	t.Run("successful query", func(t *testing.T) {
+		// Timestamp is in nanoseconds (consistent with KubeMQ protocol)
+		tsNano := int64(1700000000_000000000) // 2023-11-14T22:13:20Z in nanoseconds
 		pr := &pb.Response{
 			RequestID: "q-1",
 			ClientID:  "responder",
@@ -186,7 +190,7 @@ func TestConvertQueryResult(t *testing.T) {
 			Metadata:  "resp-meta",
 			Body:      []byte("resp-body"),
 			CacheHit:  true,
-			Timestamp: 2000,
+			Timestamp: tsNano,
 			Tags:      map[string]string{"k": "v"},
 		}
 		result := QueryResultFromProto(pr)
@@ -195,7 +199,7 @@ func TestConvertQueryResult(t *testing.T) {
 		assert.Equal(t, "resp-meta", result.Metadata)
 		assert.Equal(t, []byte("resp-body"), result.Body)
 		assert.True(t, result.CacheHit)
-		assert.Equal(t, time.Unix(2000, 0), result.ExecutedAt)
+		assert.Equal(t, time.Unix(0, tsNano), result.ExecutedAt)
 	})
 
 	t.Run("nil result", func(t *testing.T) {
@@ -206,13 +210,14 @@ func TestConvertQueryResult(t *testing.T) {
 
 func TestConvertResponseToProto(t *testing.T) {
 	t.Run("with error", func(t *testing.T) {
+		executedAt := time.Unix(1700000000, 123456789) // realistic timestamp with sub-second precision
 		req := &SendResponseRequest{
 			RequestID:  "req-1",
 			ResponseTo: "reply-ch",
 			Metadata:   "meta",
 			Body:       []byte("body"),
 			ClientID:   "client-1",
-			ExecutedAt: time.Unix(3000, 0),
+			ExecutedAt: executedAt,
 			Err:        errors.New("something failed"),
 			Tags:       map[string]string{"k": "v"},
 		}
@@ -221,6 +226,8 @@ func TestConvertResponseToProto(t *testing.T) {
 		assert.Equal(t, "reply-ch", proto.ReplyChannel)
 		assert.Equal(t, "something failed", proto.Error)
 		assert.False(t, proto.Executed)
+		// Timestamp must be in nanoseconds (consistent with KubeMQ protocol)
+		assert.Equal(t, executedAt.UnixNano(), proto.Timestamp)
 	})
 
 	t.Run("without error", func(t *testing.T) {
@@ -535,5 +542,69 @@ func TestQueueUpstreamResponseFromProto(t *testing.T) {
 		assert.True(t, result.IsError)
 		assert.Equal(t, "upstream error", result.Error)
 		assert.Empty(t, result.Results)
+	})
+}
+
+func TestResponseTimestampRoundTrip(t *testing.T) {
+	// Verify that encoding a response and decoding it as a command/query result
+	// preserves the timestamp correctly (both directions use nanoseconds).
+	now := time.Now()
+
+	req := &SendResponseRequest{
+		RequestID:  "rt-1",
+		ResponseTo: "reply-ch",
+		ClientID:   "client-1",
+		ExecutedAt: now,
+	}
+	proto := ResponseToProto(req)
+
+	// Proto timestamp must be nanoseconds
+	assert.Equal(t, now.UnixNano(), proto.Timestamp)
+
+	// Decoding as command result must yield the same time
+	cmdResult := CommandResultFromProto(proto)
+	assert.Equal(t, now.UnixNano(), cmdResult.ExecutedAt.UnixNano())
+
+	// Decoding as query result must yield the same time
+	queryResult := QueryResultFromProto(proto)
+	assert.Equal(t, now.UnixNano(), queryResult.ExecutedAt.UnixNano())
+}
+
+func TestTimestampNanosecondValues(t *testing.T) {
+	// Test with a realistic nanosecond timestamp like those sent by the KubeMQ server.
+	// 2024-01-15T12:00:00.123456789Z
+	expected := time.Date(2024, 1, 15, 12, 0, 0, 123456789, time.UTC)
+	tsNano := expected.UnixNano()
+
+	t.Run("command result preserves nanosecond precision", func(t *testing.T) {
+		pr := &pb.Response{
+			RequestID: "cmd-ns",
+			Executed:  true,
+			Timestamp: tsNano,
+		}
+		result := CommandResultFromProto(pr)
+		assert.Equal(t, expected.UnixNano(), result.ExecutedAt.UnixNano())
+		assert.True(t, expected.Equal(result.ExecutedAt))
+	})
+
+	t.Run("query result preserves nanosecond precision", func(t *testing.T) {
+		pr := &pb.Response{
+			RequestID: "q-ns",
+			Executed:  true,
+			Timestamp: tsNano,
+		}
+		result := QueryResultFromProto(pr)
+		assert.Equal(t, expected.UnixNano(), result.ExecutedAt.UnixNano())
+		assert.True(t, expected.Equal(result.ExecutedAt))
+	})
+
+	t.Run("response to proto sends nanoseconds", func(t *testing.T) {
+		req := &SendResponseRequest{
+			RequestID:  "resp-ns",
+			ClientID:   "client-1",
+			ExecutedAt: expected,
+		}
+		proto := ResponseToProto(req)
+		assert.Equal(t, tsNano, proto.Timestamp)
 	})
 }

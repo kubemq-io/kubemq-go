@@ -5,8 +5,21 @@ import (
 	"time"
 )
 
-// EventStore is an outbound event-store message. It is NOT safe for concurrent
-// use — create a new EventStore for each send operation.
+// EventStore is an outbound event-store message. Unlike Event, event-store
+// messages are persisted by the server and can be replayed by subscribers from
+// any point in history. It is NOT safe for concurrent use — create a new
+// EventStore for each send operation.
+//
+// Fields:
+//   - Id: unique message identifier. Auto-generated UUID if empty at send time.
+//   - Channel: target channel name (required unless WithDefaultChannel is set).
+//     Wildcards are not supported for publishing.
+//   - Metadata: arbitrary string metadata stored with the message.
+//   - Body: binary payload. At least one of Body or Metadata must be non-empty.
+//   - ClientId: sender identifier. Auto-populated from client defaults if empty.
+//   - Tags: key-value string pairs stored alongside the message.
+//
+// See also: SendEventStore, SubscribeToEventsStore, EventStoreResult, Event.
 type EventStore struct {
 	Id       string
 	Channel  string
@@ -75,8 +88,16 @@ func (es *EventStore) Validate() error {
 	return validateEventStore(es, nil)
 }
 
-// EventStoreResult contains the result of an event store send operation.
-// Immutable after construction. Safe to read from multiple goroutines.
+// EventStoreResult contains the result of an event store send operation
+// returned by SendEventStore. Immutable after construction. Safe to read from
+// multiple goroutines.
+//
+// Fields:
+//   - Id: the EventStore.Id of the sent message, echoed back for correlation.
+//   - Sent: true if the server persisted the event successfully.
+//   - Err: non-nil if the server rejected or failed to persist the event.
+//
+// See also: SendEventStore, EventStore.
 type EventStoreResult struct {
 	Id   string
 	Sent bool
@@ -86,6 +107,20 @@ type EventStoreResult struct {
 // EventStoreReceive is a received event store message delivered to subscription
 // callbacks. It is safe to read from multiple goroutines but must not be
 // modified after receipt.
+//
+// Fields:
+//   - Id: the original EventStore.Id set by the publisher.
+//   - Sequence: monotonically increasing sequence number assigned by the server.
+//     Unique within the channel. Useful for resuming subscriptions via
+//     StartFromSequence.
+//   - Timestamp: server-assigned time when the event was persisted.
+//   - Channel: the channel this event was published to.
+//   - Metadata: string metadata from the publisher.
+//   - Body: binary payload from the publisher.
+//   - ClientId: the publisher's client identifier.
+//   - Tags: key-value pairs from the publisher.
+//
+// See also: SubscribeToEventsStore, EventStore, StartFromSequence.
 type EventStoreReceive struct {
 	Id        string
 	Sequence  uint64
