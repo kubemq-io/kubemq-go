@@ -24,7 +24,7 @@ func main() {
 	defer cancel()
 
 	client, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithAddress("localhost", 50000), // TODO: Replace with your KubeMQ server address
 		kubemq.WithClientId("go-events-basic-pubsub-client"),
 	)
 	if err != nil {
@@ -50,6 +50,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer sub.Unsubscribe()
+
+	// Allow subscription to fully establish before publishing.
+	time.Sleep(time.Second)
 
 	// Publish an event to the channel.
 	err = client.SendEvent(ctx, kubemq.NewEvent().

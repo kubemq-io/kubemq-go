@@ -92,7 +92,7 @@ func CommandResultFromProto(r *pb.Response) *SendCommandResult {
 		CommandID:        r.RequestID,
 		ResponseClientID: r.ClientID,
 		Executed:         r.Executed,
-		ExecutedAt:       time.Unix(r.Timestamp, 0),
+		ExecutedAt:       time.Unix(0, r.Timestamp),
 		Error:            r.Error,
 		Tags:             r.Tags,
 	}
@@ -123,7 +123,7 @@ func QueryResultFromProto(r *pb.Response) *SendQueryResult {
 	return &SendQueryResult{
 		QueryID:          r.RequestID,
 		Executed:         r.Executed,
-		ExecutedAt:       time.Unix(r.Timestamp, 0),
+		ExecutedAt:       time.Unix(0, r.Timestamp),
 		Metadata:         r.Metadata,
 		ResponseClientID: r.ClientID,
 		Body:             r.Body,
@@ -145,7 +145,7 @@ func ResponseToProto(req *SendResponseRequest) *pb.Response {
 		ReplyChannel: req.ResponseTo,
 		Metadata:     req.Metadata,
 		Body:         req.Body,
-		Timestamp:    req.ExecutedAt.Unix(),
+		Timestamp:    req.ExecutedAt.UnixNano(),
 		Executed:     req.Err == nil,
 		Error:        errStr,
 		Tags:         req.Tags,

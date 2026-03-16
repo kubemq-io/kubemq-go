@@ -24,7 +24,7 @@ func main() {
 	defer cancel()
 
 	client, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("localhost", 50000),
+		kubemq.WithAddress("localhost", 50000), // TODO: Replace with your KubeMQ server address
 		kubemq.WithClientId("go-queues-send-receive-client"),
 	)
 	if err != nil {

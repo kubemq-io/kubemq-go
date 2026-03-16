@@ -1,7 +1,8 @@
 // Example: queues-stream/nack-all
 //
 // Demonstrates rejecting all messages in a transaction using NAckAll.
-// Rejected messages are returned to the queue for reprocessing.
+// Rejected messages are returned to the queue for reprocessing (up to
+// the MaxReceiveCount limit, after which they are discarded).
 //
 // Channel: go-queues-stream.nack-all
 // Client ID: go-queues-stream-nack-all-client
@@ -34,15 +35,18 @@ func main() {
 
 	channel := "go-queues-stream.nack-all"
 
-	// Send a message.
+	// Send a message with a receive policy so the server knows how to
+	// handle it after rejection (re-deliver up to 3 times).
 	_, err = client.SendQueueMessage(ctx, kubemq.NewQueueMessage().
 		SetChannel(channel).
-		SetBody([]byte("will be nacked")))
+		SetBody([]byte("will be nacked")).
+		SetMaxReceiveCount(3))
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println("Message sent")
 
-	// Receive the message.
+	// Receive the message via downstream stream.
 	downstream, err := client.QueueDownstream(ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -51,6 +55,7 @@ func main() {
 
 	err = downstream.Send(&kubemq.QueueDownstreamRequest{
 		RequestID:   fmt.Sprintf("req-get-%d", time.Now().UnixNano()),
+		ClientID:    "go-queues-stream-nack-all-client",
 		RequestType: kubemq.QueueDownstreamGet,
 		Channel:     channel,
 		MaxItems:    10,
@@ -61,6 +66,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Wait longer than WaitTimeout so the server has time to respond.
 	var txID string
 	select {
 	case msg, ok := <-downstream.Messages:
@@ -68,7 +74,7 @@ func main() {
 			txID = msg.TransactionID
 			fmt.Printf("Received: body=%s tx=%s\n", msg.Message.Body, msg.TransactionID)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		log.Fatal("No messages received")
 	}
 

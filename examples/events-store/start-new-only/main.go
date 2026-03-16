@@ -52,6 +52,9 @@ func main() {
 	}
 	defer sub.Unsubscribe()
 
+	// Allow time for subscription to register on server
+	time.Sleep(1 * time.Second)
+
 	// Send an event after subscribing.
 	_, err = client.SendEventStore(ctx, kubemq.NewEventStore().
 		SetChannel(channel).

@@ -57,6 +57,9 @@ func main() {
 	}
 	fmt.Println("Sent 3 messages")
 
+	// Allow messages to be committed to the queue.
+	time.Sleep(time.Second)
+
 	// Receive messages via downstream.
 	downstream, err := client.QueueDownstream(ctx)
 	if err != nil {
@@ -78,7 +81,7 @@ func main() {
 
 	var txID string
 	var seqs []int64
-	timeout := time.After(5 * time.Second)
+	timeout := time.After(10 * time.Second)
 	for {
 		select {
 		case msg, ok := <-downstream.Messages:

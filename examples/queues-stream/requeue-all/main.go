@@ -35,15 +35,17 @@ func main() {
 	srcChannel := "go-queues-stream.requeue-all"
 	dstChannel := "go-queues-stream.requeue-all.dest"
 
-	// Send a message to the source queue.
+	// Send a message to the source queue with a receive policy.
 	_, err = client.SendQueueMessage(ctx, kubemq.NewQueueMessage().
 		SetChannel(srcChannel).
-		SetBody([]byte("will be requeued")))
+		SetBody([]byte("will be requeued")).
+		SetMaxReceiveCount(3))
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println("Message sent to source queue")
 
-	// Receive from source queue.
+	// Receive from source queue via downstream stream.
 	downstream, err := client.QueueDownstream(ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -52,6 +54,7 @@ func main() {
 
 	err = downstream.Send(&kubemq.QueueDownstreamRequest{
 		RequestID:   fmt.Sprintf("req-get-%d", time.Now().UnixNano()),
+		ClientID:    "go-queues-stream-requeue-all-client",
 		RequestType: kubemq.QueueDownstreamGet,
 		Channel:     srcChannel,
 		MaxItems:    10,
@@ -62,6 +65,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Wait longer than WaitTimeout so the server has time to respond.
 	var txID string
 	select {
 	case msg, ok := <-downstream.Messages:
@@ -69,7 +73,7 @@ func main() {
 			txID = msg.TransactionID
 			fmt.Printf("Received: body=%s tx=%s\n", msg.Message.Body, msg.TransactionID)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		log.Fatal("No messages received")
 	}
 

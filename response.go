@@ -5,8 +5,29 @@ import (
 	"time"
 )
 
-// Response is an outbound command/query response. It is NOT safe for concurrent
+// Response is an outbound command/query response sent by a subscriber to reply
+// to a received CommandReceive or QueryReceive. It is NOT safe for concurrent
 // use — create a new Response for each send operation.
+//
+// Fields:
+//   - RequestId: the Id of the original command or query being responded to.
+//     Must match CommandReceive.Id or QueryReceive.Id.
+//   - ResponseTo: the internal routing address from CommandReceive.ResponseTo or
+//     QueryReceive.ResponseTo. The server uses this to route the response back
+//     to the original sender.
+//   - Metadata: arbitrary string metadata to include in the response (typically
+//     used for query responses).
+//   - Body: binary response payload (typically used for query responses;
+//     commands usually only need Executed/Err).
+//   - ClientId: the responder's client identifier. Auto-populated from client
+//     defaults if empty.
+//   - ExecutedAt: timestamp when the command/query was processed.
+//   - Err: if non-nil, indicates execution failure. The error message is
+//     delivered to the sender in CommandResponse.Error or QueryResponse.Error.
+//   - Tags: key-value pairs to include in the response.
+//   - Span: OpenTelemetry span context for distributed tracing (internal use).
+//
+// See also: SendResponse, CommandReceive, QueryReceive.
 type Response struct {
 	RequestId  string
 	ResponseTo string

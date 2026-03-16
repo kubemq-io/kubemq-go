@@ -13,7 +13,28 @@ import (
 // Subscription that delivers received queries via the WithOnQueryReceive
 // handler and supports Unsubscribe(). Use SendResponse to reply to received queries.
 //
-// The group parameter enables load-balanced consumption across query handlers.
+// Parameters:
+//   - ctx: parent context. Cancelling ctx tears down the subscription.
+//   - channel: the exact channel name to subscribe to (required, no wildcards).
+//   - group: enables load-balanced consumption across query handlers. When
+//     multiple subscribers share the same group on the same channel, each
+//     query is delivered to exactly one subscriber. Pass "" to receive all
+//     queries (broadcast).
+//   - opts: subscription options. WithOnQueryReceive is required — it sets the
+//     callback for each received query. The handler must call SendResponse to
+//     reply before Query.Timeout expires. WithOnError is optional.
+//
+// Returns a *Subscription on success. The subscription automatically reconnects
+// on transient errors when auto-reconnect is enabled.
+//
+// Possible errors:
+//   - VALIDATION: channel is empty, or WithOnQueryReceive handler is not provided
+//   - TRANSIENT: temporary network issue establishing the subscription (retryable)
+//   - AUTHENTICATION: invalid or missing auth token
+//   - AUTHORIZATION: insufficient permissions for this channel
+//   - CANCELLATION: ctx was cancelled before subscription was established
+//
+// See also: QueryReceive, SendQuery, SendResponse, Subscription.
 func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, opts ...SubscribeOption) (*Subscription, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
@@ -86,8 +107,43 @@ func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, 
 	return newSubscription(uuid.New(), cancel, done), nil
 }
 
-// SendQuery sends a query and waits for a response or timeout.
-// Validates the query before sending.
+// SendQuery sends a query to a subscriber on the given channel and blocks
+// until a response is received or the timeout expires. Queries implement a
+// request-reply pattern with optional response caching: exactly one subscriber
+// must handle the query and call SendResponse to reply.
+//
+// Parameters:
+//   - ctx: controls the overall deadline. If ctx expires before a response
+//     arrives, a context.DeadlineExceeded error is returned.
+//   - query: the query to send.
+//   - Query.Channel: target channel (required unless WithDefaultChannel is set).
+//   - Query.Timeout: server-side timeout for waiting for a subscriber response.
+//     If zero, defaults to 5s. If no subscriber responds within this duration,
+//     the server returns a TIMEOUT error.
+//   - Query.CacheKey: optional. When set, the server caches the response under
+//     this key. Subsequent queries with the same CacheKey return the cached
+//     response without invoking the subscriber (until CacheTTL expires).
+//   - Query.CacheTTL: time-to-live for cached responses. Only meaningful when
+//     CacheKey is set.
+//   - Query.Id: auto-generated UUID if empty.
+//   - Query.ClientId: auto-populated from client defaults if empty.
+//   - At least one of Body or Metadata must be set.
+//
+// Returns a *QueryResponse on success. Check QueryResponse.Executed to
+// determine if the subscriber successfully processed the query.
+// QueryResponse.CacheHit is true when the response was served from cache.
+// QueryResponse.Body and QueryResponse.Metadata contain the subscriber's reply.
+//
+// Possible errors:
+//   - VALIDATION: channel is empty, body and metadata are both nil/empty
+//   - TRANSIENT: temporary network issue (retryable)
+//   - TIMEOUT: no subscriber responded within Query.Timeout or ctx expired
+//   - AUTHENTICATION: invalid or missing auth token
+//   - AUTHORIZATION: insufficient permissions for this channel
+//   - NOT_FOUND: no subscriber is listening on the channel
+//   - CANCELLATION: ctx was cancelled before a response arrived
+//
+// See also: Query, QueryResponse, SubscribeToQueries, SendResponse.
 func (c *Client) SendQuery(ctx context.Context, query *Query) (*QueryResponse, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err

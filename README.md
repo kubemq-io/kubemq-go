@@ -4,6 +4,7 @@
 [![codecov](https://codecov.io/gh/kubemq-io/kubemq-go/branch/master/graph/badge.svg)](https://codecov.io/gh/kubemq-io/kubemq-go)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kubemq-io/kubemq-go/v2.svg)](https://pkg.go.dev/github.com/kubemq-io/kubemq-go/v2)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kubemq-io/kubemq-go/v2)](https://goreportcard.com/report/github.com/kubemq-io/kubemq-go/v2)
+[![License](https://img.shields.io/github/license/kubemq-io/kubemq-go)](LICENSE)
 
 The **KubeMQ SDK for Go** enables Go developers to communicate with [KubeMQ](https://kubemq.io/) message broker servers, supporting Events, Events Store, Queues, Commands, and Queries messaging patterns.
 
@@ -19,6 +20,10 @@ The **KubeMQ SDK for Go** enables Go developers to communicate with [KubeMQ](htt
 - [Troubleshooting](#troubleshooting)
 - [Examples](#examples)
 - [Migration from v1](#migration-from-v1)
+- [Deprecation Policy](#deprecation-policy)
+- [Performance](#performance)
+- [Security](#security)
+- [Additional Resources](#additional-resources)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -248,16 +253,6 @@ For users upgrading from v1, see the [Migration Guide](https://github.com/kubemq
 
 For a complete list of changes by version, see the [Changelog](https://github.com/kubemq-io/kubemq-go/blob/master/CHANGELOG.md).
 
-## Contributing
-
-See [CONTRIBUTING.md](https://github.com/kubemq-io/kubemq-go/blob/master/CONTRIBUTING.md) for development setup, coding standards, and pull request process.
-
-## License
-
-Apache License 2.0 — see [LICENSE](https://github.com/kubemq-io/kubemq-go/blob/master/LICENSE) for details.
-
----
-
 ## Deprecation Policy
 
 - Deprecated APIs are annotated with `// Deprecated: Use X instead.` (recognized by `go vet`).
@@ -285,3 +280,26 @@ Apache License 2.0 — see [LICENSE](https://github.com/kubemq-io/kubemq-go/blob
 4. **Close streams when done.** Call `Unsubscribe()` when no longer needed.
 
 See [BENCHMARKS.md](https://github.com/kubemq-io/kubemq-go/blob/master/BENCHMARKS.md) for reproducible benchmark results.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting. The SDK supports TLS and mTLS connections — for configuration details, see [How to Connect with TLS](docs/how-to/connect-with-tls.md).
+
+## Additional Resources
+
+- [KubeMQ Documentation](https://docs.kubemq.io/) — Official KubeMQ documentation and guides
+- [Full Documentation Index](docs/INDEX.md) — Complete SDK documentation index
+- [KubeMQ Concepts](docs/CONCEPTS.md) — Core KubeMQ messaging concepts
+- [SDK Feature Parity Matrix](../sdk-feature-parity-matrix.md) — Cross-SDK feature comparison
+- [CHANGELOG.md](https://github.com/kubemq-io/kubemq-go/blob/master/CHANGELOG.md) — Release history
+- [MIGRATION.md](https://github.com/kubemq-io/kubemq-go/blob/master/MIGRATION.md) — v1 to v2 migration guide
+- [TROUBLESHOOTING.md](https://github.com/kubemq-io/kubemq-go/blob/master/TROUBLESHOOTING.md) — Common issues and solutions
+- [Examples](https://github.com/kubemq-io/kubemq-go/tree/master/examples) — Runnable code examples for all patterns
+
+## Contributing
+
+See [CONTRIBUTING.md](https://github.com/kubemq-io/kubemq-go/blob/master/CONTRIBUTING.md) for development setup, coding standards, and pull request process.
+
+## License
+
+Apache License 2.0 — see [LICENSE](https://github.com/kubemq-io/kubemq-go/blob/master/LICENSE) for details.

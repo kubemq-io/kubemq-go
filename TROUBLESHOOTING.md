@@ -18,6 +18,8 @@ Each entry includes the exact error message, cause, and step-by-step solution.
 - [Queue message not acknowledged](#queue-message-not-acknowledged)
 - [Connection state: RECONNECTING](#connection-state-reconnecting)
 - [Buffer full during reconnection](#buffer-full-during-reconnection)
+- [How to Enable Debug Logging](#how-to-enable-debug-logging)
+- [gRPC Status Code Mapping](#grpc-status-code-mapping)
 
 ---
 
@@ -361,3 +363,85 @@ been disconnected for too long and too many messages are waiting to be sent.
    ```
 2. Reduce the publish rate while disconnected.
 3. Check why the server is unavailable for extended periods.
+
+---
+
+## How to Enable Debug Logging
+
+By default, the SDK is silent — no log output is produced. To enable debug-level
+logging for SDK diagnostics, attach a `slog.Logger` configured at `LevelDebug`
+using the built-in `SlogAdapter`.
+
+```go
+package main
+
+import (
+    "context"
+    "log/slog"
+    "os"
+
+    "github.com/kubemq-io/kubemq-go/v2"
+)
+
+func main() {
+    // Create a slog.Logger at debug level
+    debugLogger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+        Level: slog.LevelDebug,
+    }))
+
+    client, err := kubemq.NewClient(context.Background(),
+        kubemq.WithAddress("localhost", 50000),
+        kubemq.WithLogger(kubemq.NewSlogAdapter(debugLogger)),
+    )
+    if err != nil {
+        panic(err)
+    }
+    defer client.Close()
+
+    // Use the client — debug logs will appear on stderr
+}
+```
+
+**What to expect:** With debug logging enabled, the SDK emits structured
+key-value log lines to stderr showing connection state transitions, retry
+attempts, subscription lifecycle events, and gRPC-level diagnostics. Example:
+
+```
+time=2025-01-15T10:30:00.000Z level=DEBUG msg="connection state changed" state=READY
+time=2025-01-15T10:30:00.001Z level=DEBUG msg="sending event" channel=notifications
+```
+
+**Tip:** Use `slog.LevelInfo` instead of `slog.LevelDebug` in production to
+reduce noise while still capturing connection events and errors.
+
+---
+
+## gRPC Status Code Mapping
+
+When the SDK receives a gRPC error from the server, it maps the gRPC status
+code to an SDK error code and category. This table shows every mapping used
+by `ClassifyGRPCCode` in the SDK:
+
+| gRPC Status Code | SDK Error Code | Category | Retryable | Description |
+|---|---|---|---|---|
+| `OK` | `CANCELLATION` | Cancellation | No | Operation completed successfully |
+| `Canceled` | `CANCELLATION` | Cancellation | No | Operation was cancelled by the caller |
+| `Unknown` | `TRANSIENT` | Transient | Yes | Unknown server error; treated as transient |
+| `InvalidArgument` | `VALIDATION` | Validation | No | Client sent an invalid request |
+| `DeadlineExceeded` | `TIMEOUT` | Timeout | Yes | Operation timed out |
+| `NotFound` | `NOT_FOUND` | NotFound | No | Requested resource (channel, etc.) not found |
+| `AlreadyExists` | `VALIDATION` | Validation | No | Resource already exists |
+| `PermissionDenied` | `AUTHORIZATION` | Authorization | No | Client lacks permission for the operation |
+| `ResourceExhausted` | `THROTTLING` | Throttling | Yes | Rate limit or quota exceeded |
+| `FailedPrecondition` | `VALIDATION` | Validation | No | Operation rejected due to system state |
+| `Aborted` | `TRANSIENT` | Transient | Yes | Operation aborted; safe to retry |
+| `OutOfRange` | `VALIDATION` | Validation | No | Value out of accepted range |
+| `Unimplemented` | `FATAL` | Fatal | No | Operation not supported by the server |
+| `Internal` | `FATAL` | Fatal | No | Internal server error |
+| `Unavailable` | `TRANSIENT` | Transient | Yes | Server temporarily unavailable |
+| `DataLoss` | `FATAL` | Fatal | No | Unrecoverable data loss or corruption |
+| `Unauthenticated` | `AUTHENTICATION` | Authentication | No | Missing or invalid authentication credentials |
+
+**Retryable** errors (`TRANSIENT`, `TIMEOUT`, `THROTTLING`) are automatically
+retried by the SDK according to the configured `RetryPolicy`. Non-retryable
+errors surface immediately to the caller.
