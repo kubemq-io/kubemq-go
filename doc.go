@@ -61,6 +61,8 @@
 // For the full KubeMQ documentation, visit https://docs.kubemq.io/.
 //
 // Additional resources:
+//   - Homepage: https://kubemq.io/
+//   - pkg.go.dev: https://pkg.go.dev/github.com/kubemq-io/kubemq-go/v2
 //   - Issues: https://github.com/kubemq-io/kubemq-go/issues
 //   - Changelog: https://github.com/kubemq-io/kubemq-go/blob/main/CHANGELOG.md
 //   - Troubleshooting: https://github.com/kubemq-io/kubemq-go/blob/main/TROUBLESHOOTING.md
