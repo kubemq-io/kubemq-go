@@ -42,3 +42,6 @@ func main() {
 	fmt.Printf("Connected successfully: host=%s version=%s uptime=%ds\n",
 		info.Host, info.Version, info.ServerUpTimeSeconds)
 }
+
+// Expected output:
+// Connected successfully: host=<host> version=<version> uptime=<uptime>s

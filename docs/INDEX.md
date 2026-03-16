@@ -7,6 +7,8 @@ This project's documentation is organized following the [Diataxis framework](htt
 Step-by-step guides that teach through doing.
 
 - [Getting Started with Events](tutorials/getting-started-events.md)
+- [Getting Started with Events Store](tutorials/getting-started-events-store.md)
+- [Getting Started with Queries](tutorials/getting-started-queries.md)
 - [Building a Task Queue](tutorials/building-a-task-queue.md)
 - [Request-Reply with Commands](tutorials/request-reply-with-commands.md)
 

@@ -67,6 +67,7 @@ func ExampleClient_SendEvent() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Output:
 }
 
 func ExampleClient_SubscribeToEvents() {
