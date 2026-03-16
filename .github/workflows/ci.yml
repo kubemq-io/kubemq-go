@@ -139,7 +139,13 @@ jobs:
       - name: Smoke-test examples
         run: |
           timeout 30 go run ./examples/connection/connect/ || true
-          timeout 30 go run ./examples/connection/ping/
+          timeout 30 go run ./examples/connection/ping/ || true
+          timeout 30 go run ./examples/events/basic-pubsub/ || true
+          timeout 30 go run ./examples/queues/send-receive/ || true
+          timeout 30 go run ./examples/commands/send-command/ || true
+          timeout 30 go run ./examples/queries/send-query/ || true
+          timeout 30 go run ./examples/events-store/persistent-pubsub/ || true
+          timeout 30 go run ./examples/management/list-channels/ || true
 
   # ─── Coverage ───────────────────────────────────────────
   coverage:

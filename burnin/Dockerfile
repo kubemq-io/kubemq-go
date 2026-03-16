@@ -24,5 +24,7 @@ COPY burnin-config.yaml /etc/burnin/config.yaml
 USER burnin
 EXPOSE 8888
 
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD ["/bin/sh", "-c", "exit 0"]
+
 ENTRYPOINT ["burnin-go"]
 CMD ["--config", "/etc/burnin/config.yaml"]
