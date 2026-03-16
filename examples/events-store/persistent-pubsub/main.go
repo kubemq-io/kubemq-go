@@ -72,3 +72,8 @@ func main() {
 		log.Fatal("Timed out waiting for event")
 	}
 }
+
+// Expected output:
+// Event stored: id=<message-id> sent=true
+// Received: seq=<sequence> body=persistent hello
+// Persistent pub/sub demo complete
