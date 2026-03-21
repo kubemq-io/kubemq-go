@@ -45,47 +45,35 @@ func main() {
 	}
 	fmt.Println("Message sent to source queue")
 
-	// Receive from source queue via downstream stream.
-	downstream, err := client.QueueDownstream(ctx)
+	// Receive from source queue via downstream receiver.
+	receiver, err := client.NewQueueDownstreamReceiver(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer downstream.Close()
+	defer receiver.Close()
 
-	err = downstream.Send(&kubemq.QueueDownstreamRequest{
-		RequestID:   fmt.Sprintf("req-get-%d", time.Now().UnixNano()),
-		ClientID:    "go-queues-stream-requeue-all-client",
-		RequestType: kubemq.QueueDownstreamGet,
-		Channel:     srcChannel,
-		MaxItems:    10,
-		WaitTimeout: 5000,
-		AutoAck:     false,
+	resp, err := receiver.Poll(ctx, &kubemq.PollRequest{
+		Channel:            srcChannel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
+		AutoAck:            false,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Wait longer than WaitTimeout so the server has time to respond.
-	var txID string
-	select {
-	case msg, ok := <-downstream.Messages:
-		if ok && msg != nil {
-			txID = msg.TransactionID
-			fmt.Printf("Received: body=%s tx=%s\n", msg.Message.Body, msg.TransactionID)
+	for _, dm := range resp.Messages {
+		if dm.Message != nil {
+			fmt.Printf("Received: body=%s tx=%s\n", dm.Message.Body, dm.TransactionID)
 		}
-	case <-time.After(10 * time.Second):
-		log.Fatal("No messages received")
 	}
 
 	// ReQueueAll: move all messages to the destination queue.
-	if txID != "" {
-		fmt.Printf("ReQueueAll: moving messages from tx=%s to %s\n", txID, dstChannel)
-		_ = downstream.Send(&kubemq.QueueDownstreamRequest{
-			RequestID:        "req-requeue-all",
-			RequestType:      kubemq.QueueDownstreamReQueueAll,
-			RefTransactionID: txID,
-			ReQueueChannel:   dstChannel,
-		})
+	if len(resp.Messages) > 0 {
+		fmt.Printf("ReQueueAll: moving messages to %s\n", dstChannel)
+		if err := resp.ReQueueAll(dstChannel); err != nil {
+			log.Printf("ReQueueAll: %v", err)
+		}
 		fmt.Println("Messages requeued to destination")
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/types"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 )
 
 // Transport is the internal transport interface for communicating with the
@@ -30,9 +31,8 @@ type Transport interface {
 	SendResponse(ctx context.Context, req *SendResponseRequest) error
 
 	// Queue operations
-	SendQueueMessage(ctx context.Context, req *QueueMessageItem) (*SendQueueMessageResultItem, error)
+	SendQueueMessage(ctx context.Context, req *QueueMessageItem) (*QueueSendResultItem, error)
 	SendQueueMessages(ctx context.Context, req *SendQueueMessagesRequest) (*SendQueueMessagesResult, error)
-	ReceiveQueueMessages(ctx context.Context, req *ReceiveQueueMessagesReq) (*ReceiveQueueMessagesResp, error)
 	AckAllQueueMessages(ctx context.Context, req *AckAllQueueMessagesReq) (*AckAllQueueMessagesResp, error)
 
 	// Streaming operations
@@ -46,7 +46,12 @@ type Transport interface {
 
 	// Queue streaming
 	QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error)
-	QueueDownstream(ctx context.Context, req *QueueDownstreamRequest) (*QueueDownstreamHandle, error)
+	QueueDownstream(ctx context.Context) (pb.Kubemq_QueuesDownstreamClient, error)
+
+	// Reconnection support
+	WaitReconnect() <-chan struct{}
+	IsConnectionError(err error) bool
+	ClientID() string
 
 	// Channel management
 	CreateChannel(ctx context.Context, req *CreateChannelRequest) error
@@ -120,29 +125,6 @@ func (h *QueueUpstreamHandle) Send(requestID string, msgs []*QueueMessageItem) e
 
 // Close terminates the upstream stream.
 func (h *QueueUpstreamHandle) Close() {
-	if h.closeFn != nil {
-		h.closeFn()
-	}
-}
-
-// QueueDownstreamHandle manages a queue downstream (receive) stream.
-type QueueDownstreamHandle struct {
-	Messages <-chan any
-	Errors   <-chan error
-	SendFn   func(req *QueueDownstreamSendRequest) error
-	closeFn  func()
-}
-
-// Send sends a downstream request (poll, ack, nack, requeue, etc.).
-func (h *QueueDownstreamHandle) Send(req *QueueDownstreamSendRequest) error {
-	if h.SendFn == nil {
-		return fmt.Errorf("kubemq: downstream handle not initialized")
-	}
-	return h.SendFn(req)
-}
-
-// Close terminates the downstream stream.
-func (h *QueueDownstreamHandle) Close() {
 	if h.closeFn != nil {
 		h.closeFn()
 	}

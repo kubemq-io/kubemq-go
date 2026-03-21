@@ -125,12 +125,12 @@ func (q *Query) Validate() error {
 //   - ClientId: the sender's client identifier.
 //   - Metadata: string metadata from the sender.
 //   - Body: binary payload from the sender.
-//   - ResponseTo: internal routing address used by SendResponse to deliver the
-//     reply back to the sender. Pass this value to Response.ResponseTo.
+//   - ResponseTo: internal routing address used by SendQueryResponse to deliver the
+//     reply back to the sender. Pass this value to QueryReply.ResponseTo.
 //   - Tags: key-value pairs from the sender.
 //   - Span: OpenTelemetry span context for distributed tracing.
 //
-// See also: SubscribeToQueries, SendResponse, Response.
+// See also: SubscribeToQueries, SendQueryResponse, QueryReply.
 type QueryReceive struct {
 	Id         string
 	Channel    string

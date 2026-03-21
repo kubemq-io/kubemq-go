@@ -7,6 +7,7 @@ import (
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
 	"github.com/kubemq-io/kubemq-go/v2/internal/types"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 )
 
 // MockTransport implements the internal Transport interface for unit testing.
@@ -21,9 +22,8 @@ type MockTransport struct {
 	sendCommandFn    func(ctx context.Context, req *transport.SendCommandRequest) (*transport.SendCommandResult, error)
 	sendQueryFn      func(ctx context.Context, req *transport.SendQueryRequest) (*transport.SendQueryResult, error)
 	sendResponseFn   func(ctx context.Context, req *transport.SendResponseRequest) error
-	sendQueueMsgFn   func(ctx context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error)
+	sendQueueMsgFn   func(ctx context.Context, req *transport.QueueMessageItem) (*transport.QueueSendResultItem, error)
 	sendQueueMsgsFn  func(ctx context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error)
-	recvQueueMsgsFn  func(ctx context.Context, req *transport.ReceiveQueueMessagesReq) (*transport.ReceiveQueueMessagesResp, error)
 	ackAllFn         func(ctx context.Context, req *transport.AckAllQueueMessagesReq) (*transport.AckAllQueueMessagesResp, error)
 	pingFn           func(ctx context.Context) (*transport.ServerInfoResult, error)
 	closeFn          func() error
@@ -34,10 +34,15 @@ type MockTransport struct {
 	subscribeToQueriesFn     func(ctx context.Context, req *transport.SubscribeRequest) (*transport.StreamHandle, error)
 	sendEventsStreamFn       func(ctx context.Context) (*transport.EventStreamHandle, error)
 	queueUpstreamFn          func(ctx context.Context) (*transport.QueueUpstreamHandle, error)
-	queueDownstreamFn        func(ctx context.Context, req *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error)
+	queueDownstreamFn        func(ctx context.Context) (pb.Kubemq_QueuesDownstreamClient, error)
 	createChannelFn          func(ctx context.Context, req *transport.CreateChannelRequest) error
 	deleteChannelFn          func(ctx context.Context, req *transport.DeleteChannelRequest) error
 	listChannelsFn           func(ctx context.Context, req *transport.ListChannelsRequest) ([]*transport.ChannelInfo, error)
+
+	// ReconnectCh is the channel returned by WaitReconnect(). Tests can close it to simulate reconnection.
+	ReconnectCh chan struct{}
+	// MockClientID is the value returned by ClientID().
+	MockClientID string
 
 	SendEventCalls      int
 	SendEventStoreCalls int
@@ -49,7 +54,10 @@ type MockTransport struct {
 
 // NewMockTransport returns a MockTransport with default no-op implementations.
 func NewMockTransport() *MockTransport {
-	mt := &MockTransport{}
+	mt := &MockTransport{
+		ReconnectCh:  make(chan struct{}),
+		MockClientID: "mock-client",
+	}
 	mt.state.Store(int32(types.StateReady))
 	mt.sendEventFn = func(_ context.Context, _ *transport.SendEventRequest) error { return nil }
 	mt.sendEventStoreFn = func(_ context.Context, _ *transport.SendEventStoreRequest) (*transport.SendEventStoreResult, error) {
@@ -62,14 +70,11 @@ func NewMockTransport() *MockTransport {
 		return &transport.SendQueryResult{Executed: true}, nil
 	}
 	mt.sendResponseFn = func(_ context.Context, _ *transport.SendResponseRequest) error { return nil }
-	mt.sendQueueMsgFn = func(_ context.Context, _ *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
-		return &transport.SendQueueMessageResultItem{}, nil
+	mt.sendQueueMsgFn = func(_ context.Context, _ *transport.QueueMessageItem) (*transport.QueueSendResultItem, error) {
+		return &transport.QueueSendResultItem{}, nil
 	}
 	mt.sendQueueMsgsFn = func(_ context.Context, _ *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
 		return &transport.SendQueueMessagesResult{}, nil
-	}
-	mt.recvQueueMsgsFn = func(_ context.Context, _ *transport.ReceiveQueueMessagesReq) (*transport.ReceiveQueueMessagesResp, error) {
-		return &transport.ReceiveQueueMessagesResp{}, nil
 	}
 	mt.ackAllFn = func(_ context.Context, _ *transport.AckAllQueueMessagesReq) (*transport.AckAllQueueMessagesResp, error) {
 		return &transport.AckAllQueueMessagesResp{}, nil
@@ -145,7 +150,7 @@ func (m *MockTransport) SendResponse(ctx context.Context, req *transport.SendRes
 	return fn(ctx, req)
 }
 
-func (m *MockTransport) SendQueueMessage(ctx context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+func (m *MockTransport) SendQueueMessage(ctx context.Context, req *transport.QueueMessageItem) (*transport.QueueSendResultItem, error) {
 	m.mu.Lock()
 	fn := m.sendQueueMsgFn
 	m.mu.Unlock()
@@ -155,13 +160,6 @@ func (m *MockTransport) SendQueueMessage(ctx context.Context, req *transport.Que
 func (m *MockTransport) SendQueueMessages(ctx context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
 	m.mu.Lock()
 	fn := m.sendQueueMsgsFn
-	m.mu.Unlock()
-	return fn(ctx, req)
-}
-
-func (m *MockTransport) ReceiveQueueMessages(ctx context.Context, req *transport.ReceiveQueueMessagesReq) (*transport.ReceiveQueueMessagesResp, error) {
-	m.mu.Lock()
-	fn := m.recvQueueMsgsFn
 	m.mu.Unlock()
 	return fn(ctx, req)
 }
@@ -247,14 +245,30 @@ func (m *MockTransport) QueueUpstream(ctx context.Context) (*transport.QueueUpst
 	return nil, nil
 }
 
-func (m *MockTransport) QueueDownstream(ctx context.Context, req *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error) {
+func (m *MockTransport) QueueDownstream(ctx context.Context) (pb.Kubemq_QueuesDownstreamClient, error) {
 	m.mu.Lock()
 	fn := m.queueDownstreamFn
 	m.mu.Unlock()
 	if fn != nil {
-		return fn(ctx, req)
+		return fn(ctx)
 	}
 	return nil, nil
+}
+
+func (m *MockTransport) WaitReconnect() <-chan struct{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.ReconnectCh
+}
+
+func (m *MockTransport) IsConnectionError(_ error) bool {
+	return false
+}
+
+func (m *MockTransport) ClientID() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.MockClientID
 }
 
 func (m *MockTransport) CreateChannel(ctx context.Context, req *transport.CreateChannelRequest) error {
@@ -386,7 +400,7 @@ func (m *MockTransport) OnSendResponse(fn func(ctx context.Context, req *transpo
 }
 
 // OnSendQueueMessage sets the handler for unary SendQueueMessage calls.
-func (m *MockTransport) OnSendQueueMessage(fn func(ctx context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error)) {
+func (m *MockTransport) OnSendQueueMessage(fn func(ctx context.Context, req *transport.QueueMessageItem) (*transport.QueueSendResultItem, error)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sendQueueMsgFn = fn
@@ -397,13 +411,6 @@ func (m *MockTransport) OnSendQueueMessages(fn func(ctx context.Context, req *tr
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sendQueueMsgsFn = fn
-}
-
-// OnReceiveQueueMessages sets the handler for ReceiveQueueMessages calls.
-func (m *MockTransport) OnReceiveQueueMessages(fn func(ctx context.Context, req *transport.ReceiveQueueMessagesReq) (*transport.ReceiveQueueMessagesResp, error)) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.recvQueueMsgsFn = fn
 }
 
 // OnAckAllQueueMessages sets the handler for AckAllQueueMessages calls.
@@ -428,7 +435,7 @@ func (m *MockTransport) OnQueueUpstream(fn func(ctx context.Context) (*transport
 }
 
 // OnQueueDownstream sets the handler for QueueDownstream calls.
-func (m *MockTransport) OnQueueDownstream(fn func(ctx context.Context, req *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error)) {
+func (m *MockTransport) OnQueueDownstream(fn func(ctx context.Context) (pb.Kubemq_QueuesDownstreamClient, error)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.queueDownstreamFn = fn

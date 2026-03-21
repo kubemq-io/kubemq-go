@@ -49,38 +49,6 @@ func TestQueueUpstreamHandle_Close(t *testing.T) {
 	assert.True(t, closed)
 }
 
-func TestQueueDownstreamHandle_Send(t *testing.T) {
-	var sentReq *QueueDownstreamSendRequest
-	h := &QueueDownstreamHandle{
-		SendFn: func(req *QueueDownstreamSendRequest) error {
-			sentReq = req
-			return nil
-		},
-	}
-	err := h.Send(&QueueDownstreamSendRequest{RequestID: "r1"})
-	require.NoError(t, err)
-	require.NotNil(t, sentReq)
-	assert.Equal(t, "r1", sentReq.RequestID)
-}
-
-func TestQueueDownstreamHandle_Send_NilFn(t *testing.T) {
-	h := &QueueDownstreamHandle{}
-	err := h.Send(nil)
-	require.Error(t, err)
-}
-
-func TestQueueDownstreamHandle_Close(t *testing.T) {
-	closed := false
-	h := &QueueDownstreamHandle{closeFn: func() { closed = true }}
-	h.Close()
-	assert.True(t, closed)
-}
-
-func TestQueueDownstreamHandle_Close_NilFn(t *testing.T) {
-	h := &QueueDownstreamHandle{}
-	h.Close()
-}
-
 func TestEventStreamHandle_Send_NilSendFn(t *testing.T) {
 	h := &EventStreamHandle{}
 	err := h.Send(&EventStreamItem{})

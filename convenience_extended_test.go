@@ -50,9 +50,9 @@ func TestPublishEventStore_Success(t *testing.T) {
 
 func TestSendQueueMessageSimple_Success(t *testing.T) {
 	c, mt := newConvenienceTestClient(t)
-	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.QueueSendResultItem, error) {
 		assert.Equal(t, "q-ch", req.Channel)
-		return &transport.SendQueueMessageResultItem{MessageID: "qm-1", SentAt: 123}, nil
+		return &transport.QueueSendResultItem{MessageID: "qm-1", SentAt: 123}, nil
 	})
 	result, err := c.SendQueueMessageSimple(context.Background(), "q-ch", []byte("data"))
 	require.NoError(t, err)
@@ -164,13 +164,13 @@ func TestPublishEventStore_WithOptions(t *testing.T) {
 
 func TestSendQueueMessageSimple_WithOptions(t *testing.T) {
 	c, mt := newConvenienceTestClient(t)
-	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.QueueSendResultItem, error) {
 		assert.Equal(t, "q-ch", req.Channel)
 		assert.Equal(t, 30, req.Policy.ExpirationSeconds)
 		assert.Equal(t, 5, req.Policy.DelaySeconds)
 		assert.Equal(t, 3, req.Policy.MaxReceiveCount)
 		assert.Equal(t, "dlq", req.Policy.MaxReceiveQueue)
-		return &transport.SendQueueMessageResultItem{MessageID: "qm-1", SentAt: 123}, nil
+		return &transport.QueueSendResultItem{MessageID: "qm-1", SentAt: 123}, nil
 	})
 	result, err := c.SendQueueMessageSimple(context.Background(), "q-ch", []byte("data"),
 		WithExpiration(30),

@@ -94,28 +94,3 @@ func TestQueryReceiveFromProto(t *testing.T) {
 func TestQueryReceiveFromProto_Nil(t *testing.T) {
 	assert.Nil(t, QueryReceiveFromProto(nil))
 }
-
-func TestQueueDownstreamResponseFromProto(t *testing.T) {
-	pbResp := &pb.QueuesDownstreamResponse{
-		TransactionId: "txn-1",
-		RefRequestId:  "req-1",
-		Messages: []*pb.QueueMessage{
-			{MessageID: "m1", Channel: "q1", Body: []byte("body1")},
-		},
-		ActiveOffsets:       []int64{1, 2, 3},
-		IsError:             false,
-		TransactionComplete: true,
-	}
-
-	result := QueueDownstreamResponseFromProto(pbResp)
-	assert.Equal(t, "txn-1", result.TransactionID)
-	assert.Equal(t, "req-1", result.RefRequestID)
-	assert.Len(t, result.Messages, 1)
-	assert.Equal(t, "m1", result.Messages[0].ID)
-	assert.Equal(t, []int64{1, 2, 3}, result.ActiveOffsets)
-	assert.True(t, result.TransactionComplete)
-}
-
-func TestQueueDownstreamResponseFromProto_Nil(t *testing.T) {
-	assert.Nil(t, QueueDownstreamResponseFromProto(nil))
-}

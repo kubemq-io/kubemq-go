@@ -41,13 +41,13 @@ func main() {
 			fmt.Printf("Handling query: id=%s body=%s\n", q.Id, q.Body)
 
 			// Process the query and prepare a response.
-			resp := kubemq.NewResponse().
+			resp := kubemq.NewQueryReply().
 				SetRequestId(q.Id).
 				SetResponseTo(q.ResponseTo).
 				SetBody([]byte(`{"users":["alice","bob"]}`)).
 				SetMetadata("success").
 				SetExecutedAt(time.Now())
-			if err := client.SendResponse(ctx, resp); err != nil {
+			if err := client.SendQueryResponse(ctx, resp); err != nil {
 				log.Printf("Failed to send response: %v", err)
 			}
 			close(done)

@@ -42,23 +42,20 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Poll with AutoAck=true — messages are acknowledged automatically.
-	pollResp, err := client.PollQueue(ctx, &kubemq.QueuePollRequest{
-		Channel:     channel,
-		MaxItems:    10,
-		WaitTimeout: 5000,
-		AutoAck:     true,
+	// Poll with AutoAck=true - messages are acknowledged automatically.
+	pollResp, err := client.PollQueue(ctx, &kubemq.PollRequest{
+		Channel:            channel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
 	})
 	if err != nil {
 		log.Fatalf("PollQueue: %v", err)
 	}
-	if pollResp.IsError {
-		log.Printf("Poll error: %s", pollResp.Error)
-	} else {
-		fmt.Printf("Auto-ack: received %d messages (automatically acknowledged)\n",
-			len(pollResp.Messages))
-		for _, m := range pollResp.Messages {
-			fmt.Printf("  body=%s\n", m.Body)
+	fmt.Printf("Auto-ack: received %d messages (automatically acknowledged)\n",
+		len(pollResp.Messages))
+	for _, dm := range pollResp.Messages {
+		if dm.Message != nil {
+			fmt.Printf("  body=%s\n", dm.Message.Body)
 		}
 	}
 }

@@ -39,13 +39,13 @@ func main() {
 	sub, err := client.SubscribeToQueries(ctx, channel, "",
 		kubemq.WithOnQueryReceive(func(q *kubemq.QueryReceive) {
 			fmt.Printf("Query received: channel=%s body=%s\n", q.Channel, q.Body)
-			resp := kubemq.NewResponse().
+			resp := kubemq.NewQueryReply().
 				SetRequestId(q.Id).
 				SetResponseTo(q.ResponseTo).
 				SetBody([]byte(`{"result":"data","status":"ok"}`)).
 				SetMetadata("ok").
 				SetExecutedAt(time.Now())
-			_ = client.SendResponse(ctx, resp)
+			_ = client.SendQueryResponse(ctx, resp)
 			close(done)
 		}),
 		kubemq.WithOnError(func(err error) {

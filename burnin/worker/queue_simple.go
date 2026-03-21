@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -14,48 +13,50 @@ import (
 )
 
 // QueueSimpleWorker implements the Worker interface for the simple (unary)
-// queue API pattern using SendQueueMessage / ReceiveQueueMessages.
+// queue API pattern using SendQueueMessage / PollQueue.
 type QueueSimpleWorker struct {
 	*BaseWorker
+	producersPerChannel int
+	consumersPerChannel int
 }
 
-// NewQueueSimpleWorker creates a new queue simple pattern worker.
-func NewQueueSimpleWorker(cfg *config.Config, cp *ClientProvider, logger *slog.Logger) *QueueSimpleWorker {
-	bw := NewBaseWorker(PatternQueueSimple, cfg, cp, logger)
-	// Override channel name to avoid conflict with queue_stream worker
-	bw.channelName = fmt.Sprintf("go_burnin_%s_queue_simple_001", cfg.RunID)
+// NewQueueSimpleWorker creates a new queue simple pattern worker for a specific channel.
+func NewQueueSimpleWorker(cfg *config.Config, cp *ClientProvider, logger *slog.Logger,
+	channelName string, channelIndex int, pc *config.PatternConfig,
+	patternLatAccum *metrics.LatencyAccumulator) *QueueSimpleWorker {
+
+	bw := NewBaseWorker(PatternQueueSimple, cfg, cp, logger, channelName, channelIndex, pc.Rate, patternLatAccum)
 	bw.channelType = "queues"
-	return &QueueSimpleWorker{BaseWorker: bw}
+	return &QueueSimpleWorker{
+		BaseWorker:          bw,
+		producersPerChannel: pc.ProducersPerChannel,
+		consumersPerChannel: pc.ConsumersPerChannel,
+	}
 }
 
-// Start launches consumers and producers for the simple queue pattern.
+// Start launches consumers for the simple queue pattern on this channel.
 func (w *QueueSimpleWorker) Start(ctx context.Context) error {
 	ctx, w.cancel = context.WithCancel(ctx)
 	w.producerCtx, w.producerCancel = context.WithCancel(ctx)
-	cfg := w.Config()
 
-	// Create channel
-	if err := w.CreateChannel(ctx, kubemq.ChannelTypeQueues); err != nil {
-		w.Logger().Error("failed to create queue simple channel", "error", err)
-		return fmt.Errorf("create queue simple channel: %w", err)
-	}
-
-	// Start consumers first
-	for i := 0; i < cfg.Concurrency.QueueSimpleConsumers; i++ {
-		consumerID := fmt.Sprintf("c-%s-%03d", PatternQueueSimple, i)
+	// Start consumers
+	for i := 0; i < w.consumersPerChannel; i++ {
+		consumerID := ConsumerID(PatternQueueSimple, w.channelIdx, i)
 		w.startConsumer(ctx, consumerID)
 	}
 
 	// Mark consumers ready
 	w.MarkConsumerReady()
 
-	// Start producers
-	for i := 0; i < cfg.Concurrency.QueueSimpleProducers; i++ {
-		producerID := fmt.Sprintf("p-%s-%03d", PatternQueueSimple, i)
+	return nil
+}
+
+// StartProducers launches producer goroutines. Called after warmup.
+func (w *QueueSimpleWorker) StartProducers() {
+	for i := 0; i < w.producersPerChannel; i++ {
+		producerID := ProducerID(PatternQueueSimple, w.channelIdx, i)
 		w.startProducer(w.producerCtx, producerID)
 	}
-
-	return nil
 }
 
 // startProducer launches a goroutine that sends queue messages via the unary API.
@@ -65,6 +66,7 @@ func (w *QueueSimpleWorker) startProducer(ctx context.Context, producerID string
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
+		ws := w.getOrCreateProducerStat(producerID)
 
 		for {
 			select {
@@ -103,26 +105,37 @@ func (w *QueueSimpleWorker) startProducer(ctx context.Context, producerID string
 
 			if err != nil {
 				w.RecordError("send_failure")
-				w.Logger().Error("failed to send queue message",
-					"producer", producerID, "seq", currentSeq, "error", err)
+				ws.errors.Add(1)
+				// Backoff on send errors to avoid retry-throttle cascade
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(200 * time.Millisecond):
+				}
 				continue
 			}
 
 			if result.IsError {
 				w.RecordError("send_result_error")
-				w.Logger().Error("queue send result error",
-					"producer", producerID, "seq", currentSeq, "error", result.Error)
+				ws.errors.Add(1)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(200 * time.Millisecond):
+				}
 				continue
 			}
 
-			// Only record send after confirmed success
-			metrics.AddBytesSent(w.Pattern(), float64(len(body)))
+			ws.latAccum.Record(sendDuration)
+			w.RecordBytesSent(producerID, len(body))
 			w.RecordSend(producerID, currentSeq)
 		}
 	}()
 }
 
-// startConsumer launches a goroutine that polls for queue messages via the unary API.
+// startConsumer launches a goroutine that polls for queue messages using a
+// persistent QueueDownstreamReceiver (reused across polls) instead of
+// PollQueue which creates/destroys a gRPC stream per call.
 func (w *QueueSimpleWorker) startConsumer(ctx context.Context, consumerID string) {
 	cfg := w.Config()
 
@@ -136,53 +149,76 @@ func (w *QueueSimpleWorker) startConsumer(ctx context.Context, consumerID string
 				return
 			default:
 			}
-
-			resp, err := w.Client().ReceiveQueueMessages(ctx, &kubemq.ReceiveQueueMessagesRequest{
-				Channel:             w.ChannelName(),
-				MaxNumberOfMessages: int32(cfg.Queue.PollMaxMessages),
-				WaitTimeSeconds:     int32(cfg.Queue.PollWaitTimeoutSeconds),
-			})
-			if err != nil {
-				// Check if context cancelled (normal shutdown)
-				if ctx.Err() != nil {
-					return
-				}
-				w.RecordError("receive_failure")
-				w.Logger().Error("failed to receive queue messages",
-					"consumer", consumerID, "error", err)
-				// Brief backoff before retry
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(time.Second):
-				}
-				continue
-			}
-
-			if resp.IsError {
-				w.RecordError("receive_result_error")
-				w.Logger().Error("queue receive result error",
-					"consumer", consumerID, "error", resp.Error)
-				continue
-			}
-
-			// Process received messages (auto-consumed on receipt, no explicit ack needed)
-			for _, qMsg := range resp.Messages {
-				if qMsg == nil {
-					continue
-				}
-
-				msg, decErr := payload.Decode(qMsg.Body)
-				if decErr != nil {
-					w.Logger().Error("failed to decode queue simple message",
-						"consumer", consumerID, "error", decErr)
-					w.RecordError("decode_failure")
-					continue
-				}
-
-				w.RecordReceive(consumerID, qMsg.Body,
-					qMsg.Tags["content_hash"], msg.ProducerID, msg.Sequence)
-			}
+			w.runConsumerLoop(ctx, consumerID, cfg)
 		}
 	}()
+}
+
+// runConsumerLoop creates a persistent receiver and polls in a loop.
+// If the receiver errors, it returns so the outer loop can retry.
+func (w *QueueSimpleWorker) runConsumerLoop(ctx context.Context, consumerID string, cfg *config.Config) {
+	receiver, err := w.Client().NewQueueDownstreamReceiver(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		w.Logger().Error("failed to create queue receiver",
+			"consumer", consumerID, "error", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+		return
+	}
+	defer func() { _ = receiver.Close() }()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		resp, err := receiver.Poll(ctx, &kubemq.PollRequest{
+			Channel:            w.ChannelName(),
+			MaxItems:           int32(cfg.Queue.PollMaxMessages),
+			WaitTimeoutSeconds: int32(cfg.Queue.PollWaitTimeoutSeconds),
+			AutoAck:            true,
+		})
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			w.RecordError("receive_failure")
+			w.Logger().Error("poll failed, recreating receiver",
+				"consumer", consumerID, "error", err)
+			return // exit to outer loop to create a new receiver
+		}
+
+		if resp.IsError {
+			w.RecordError("receive_result_error")
+			w.Logger().Error("queue poll result error",
+				"consumer", consumerID, "error", resp.Error)
+			continue
+		}
+
+		for _, dsMsg := range resp.Messages {
+			if dsMsg == nil || dsMsg.Message == nil {
+				continue
+			}
+			qMsg := dsMsg.Message
+
+			msg, decErr := payload.Decode(qMsg.Body)
+			if decErr != nil {
+				w.Logger().Error("failed to decode queue simple message",
+					"consumer", consumerID, "error", decErr)
+				w.RecordError("decode_failure")
+				continue
+			}
+
+			w.RecordReceive(consumerID, qMsg.Body,
+				qMsg.Tags["content_hash"], msg.ProducerID, msg.Sequence)
+		}
+	}
 }
