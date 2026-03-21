@@ -717,7 +717,7 @@ func (t *grpcTransport) SendResponse(ctx context.Context, req *SendResponseReque
 }
 
 // SendQueueMessage sends a single queue message using the unary RPC.
-func (t *grpcTransport) SendQueueMessage(ctx context.Context, req *QueueMessageItem) (*SendQueueMessageResultItem, error) {
+func (t *grpcTransport) SendQueueMessage(ctx context.Context, req *QueueMessageItem) (*QueueSendResultItem, error) {
 	if !t.enterOperation() {
 		return nil, fmt.Errorf("kubemq: client closed")
 	}
@@ -734,7 +734,7 @@ func (t *grpcTransport) SendQueueMessage(ctx context.Context, req *QueueMessageI
 	if err != nil {
 		return nil, fmt.Errorf("send queue message failed: %w", err)
 	}
-	return SendQueueMessageResultFromProto(result), nil
+	return QueueSendResultFromProto(result), nil
 }
 
 // SendQueueMessages sends one or more queue messages.
@@ -762,40 +762,12 @@ func (t *grpcTransport) SendQueueMessages(ctx context.Context, req *SendQueueMes
 		return nil, fmt.Errorf("send queue messages failed: %w", err)
 	}
 	out := &SendQueueMessagesResult{
-		Results: make([]*SendQueueMessageResultItem, 0, len(result.Results)),
+		Results: make([]*QueueSendResultItem, 0, len(result.Results)),
 	}
 	for _, r := range result.Results {
-		out.Results = append(out.Results, SendQueueMessageResultFromProto(r))
+		out.Results = append(out.Results, QueueSendResultFromProto(r))
 	}
 	return out, nil
-}
-
-// ReceiveQueueMessages receives messages from a queue.
-func (t *grpcTransport) ReceiveQueueMessages(ctx context.Context, req *ReceiveQueueMessagesReq) (*ReceiveQueueMessagesResp, error) {
-	if !t.enterOperation() {
-		return nil, fmt.Errorf("kubemq: client closed")
-	}
-	defer t.exitOperation()
-
-	if err := t.checkReady(ctx); err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := withDefaultTimeout(ctx, defaultQueueRecvTimeout)
-	defer cancel()
-	pbReq := &pb.ReceiveQueueMessagesRequest{
-		RequestID:           req.RequestID,
-		ClientID:            firstNonEmpty(req.ClientID, t.cfg.ClientID),
-		Channel:             req.Channel,
-		MaxNumberOfMessages: req.MaxNumberOfMessages,
-		WaitTimeSeconds:     req.WaitTimeSeconds,
-		IsPeak:              req.IsPeak,
-	}
-	result, err := t.getClient().ReceiveQueueMessages(ctx, pbReq)
-	if err != nil {
-		return nil, fmt.Errorf("receive queue messages failed: %w", err)
-	}
-	return ReceiveQueueMessagesRespFromProto(result), nil
 }
 
 // AckAllQueueMessages acknowledges all messages in a queue.
@@ -1189,12 +1161,10 @@ func (t *grpcTransport) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle
 	return handle, nil
 }
 
-// QueueDownstream opens a bidirectional stream for receiving and managing queue messages.
-// The stream auto-reconnects on connection errors: the recv loop waits for
-// the transport to re-establish the connection and then re-opens the gRPC stream.
-// After reconnection, any previous transaction is invalidated — the caller must
-// issue a new Get request to start a fresh transaction.
-func (t *grpcTransport) QueueDownstream(ctx context.Context, req *QueueDownstreamRequest) (*QueueDownstreamHandle, error) {
+// QueueDownstream opens a bidirectional gRPC stream for receiving and managing
+// queue messages. The caller is responsible for reconnection — use WaitReconnect()
+// and IsConnectionError() to detect and recover from connection losses.
+func (t *grpcTransport) QueueDownstream(ctx context.Context) (pb.Kubemq_QueuesDownstreamClient, error) {
 	if !t.enterOperation() {
 		return nil, fmt.Errorf("kubemq: client closed")
 	}
@@ -1204,121 +1174,28 @@ func (t *grpcTransport) QueueDownstream(ctx context.Context, req *QueueDownstrea
 		return nil, err
 	}
 
-	streamCtx, streamCancel := context.WithCancel(ctx)
-
-	openStream := func() (pb.Kubemq_QueuesDownstreamClient, error) {
-		return t.getClient().QueuesDownstream(streamCtx)
-	}
-
-	stream, err := openStream()
+	stream, err := t.getClient().QueuesDownstream(ctx)
 	if err != nil {
-		streamCancel()
 		return nil, fmt.Errorf("queue downstream: %w", err)
 	}
+	return stream, nil
+}
 
-	var mu sync.Mutex
-	msgCh := make(chan any, t.cfg.ReceiveBufferSize)
-	errCh := make(chan error, 8)
+// WaitReconnect returns the current reconnect notification channel.
+// It is closed when the transport reconnects successfully.
+func (t *grpcTransport) WaitReconnect() <-chan struct{} {
+	return t.waitReconnect()
+}
 
-	go func() {
-		defer close(msgCh)
-		defer close(errCh)
-		for {
-			resp, recvErr := stream.Recv()
-			if recvErr != nil {
-				select {
-				case <-streamCtx.Done():
-					return
-				default:
-				}
-				if !isConnectionError(recvErr) {
-					select {
-					case errCh <- recvErr:
-					case <-streamCtx.Done():
-					}
-					return
-				}
-				t.logger.Info("queue downstream stream lost, waiting for reconnection")
-				select {
-				case errCh <- fmt.Errorf("kubemq: queue downstream stream reconnecting: %w", recvErr):
-				default:
-				}
-				reconnectCh := t.waitReconnect()
-				select {
-				case <-streamCtx.Done():
-					return
-				case <-reconnectCh:
-				}
-				t.logger.Info("reconnection detected, re-opening queue downstream stream")
-				newStream, openErr := openStream()
-				if openErr != nil {
-					t.logger.Error("queue downstream stream re-open failed", "error", openErr)
-					select {
-					case errCh <- fmt.Errorf("queue downstream recovery failed: %w", openErr):
-					case <-streamCtx.Done():
-					}
-					return
-				}
-				mu.Lock()
-				stream = newStream
-				mu.Unlock()
-				continue
-			}
-			if pb.QueuesDownstreamRequestType(resp.RequestTypeData) == 11 {
-				select {
-				case <-streamCtx.Done():
-				case errCh <- fmt.Errorf("kubemq: server closed downstream stream"):
-				}
-				return
-			}
-			if resp.IsError {
-				select {
-				case <-streamCtx.Done():
-					return
-				case errCh <- fmt.Errorf("queue downstream error: %s", resp.Error):
-				}
-				continue
-			}
-			result := QueueDownstreamResponseFromProto(resp)
-			select {
-			case <-streamCtx.Done():
-				return
-			case msgCh <- result:
-			}
-		}
-	}()
+// IsConnectionError reports whether the given error indicates a transport-level
+// connection loss that requires reconnection.
+func (t *grpcTransport) IsConnectionError(err error) bool {
+	return isConnectionError(err)
+}
 
-	handle := &QueueDownstreamHandle{
-		Messages: msgCh,
-		Errors:   errCh,
-		SendFn: func(r *QueueDownstreamSendRequest) error {
-			mu.Lock()
-			s := stream
-			mu.Unlock()
-			pbReq := &pb.QueuesDownstreamRequest{
-				RequestID:        r.RequestID,
-				ClientID:         firstNonEmpty(r.ClientID, t.cfg.ClientID),
-				RequestTypeData:  pb.QueuesDownstreamRequestType(r.RequestType),
-				Channel:          r.Channel,
-				MaxItems:         r.MaxItems,
-				WaitTimeout:      r.WaitTimeout,
-				AutoAck:          r.AutoAck,
-				ReQueueChannel:   r.ReQueueChannel,
-				SequenceRange:    r.SequenceRange,
-				RefTransactionId: r.RefTransactionID,
-				Metadata:         r.Metadata,
-			}
-			return s.Send(pbReq)
-		},
-		closeFn: func() {
-			mu.Lock()
-			s := stream
-			mu.Unlock()
-			_ = s.CloseSend()
-			streamCancel()
-		},
-	}
-	return handle, nil
+// ClientID returns the configured client ID for the transport.
+func (t *grpcTransport) ClientID() string {
+	return t.cfg.ClientID
 }
 
 // CreateChannel creates a channel by sending an internal query to the KubeMQ server.

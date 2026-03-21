@@ -120,13 +120,14 @@ func TestIntegration_QueueRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, result.IsError, result.Error)
 
-	resp, err := c.ReceiveQueueMessages(ctx, &ReceiveQueueMessagesRequest{
-		Channel:             ch,
-		MaxNumberOfMessages: 1,
-		WaitTimeSeconds:     5,
+	resp, err := c.PollQueue(ctx, &PollRequest{
+		Channel:            ch,
+		MaxItems:           1,
+		WaitTimeoutSeconds: 5,
+		AutoAck:            true,
 	})
 	require.NoError(t, err)
 	require.False(t, resp.IsError, resp.Error)
 	require.GreaterOrEqual(t, len(resp.Messages), 1)
-	assert.Equal(t, "queue integration test", string(resp.Messages[0].Body))
+	assert.Equal(t, "queue integration test", string(resp.Messages[0].Message.Body))
 }

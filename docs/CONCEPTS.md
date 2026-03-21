@@ -106,13 +106,11 @@ delivery. Messages persist until explicitly acknowledged by a consumer.
 
 A producer sends a message to a queue channel; the broker persists it. A consumer
 polls or receives the message, processes it, and sends an **acknowledgment** (ack).
-On ack, the message is removed. If the consumer fails to ack within the **visibility
-timeout**, the message becomes available to other consumers.
+On ack, the message is removed. If the consumer fails to ack, the message becomes
+available to other consumers.
 
 **Advanced features:**
 
-- **Visibility timeout** — Time a message is hidden from other consumers while being
-  processed. If the consumer crashes or doesn't ack in time, the message reappears.
 - **Dead-letter queue** — Messages exceeding the maximum receive count are moved to a
   dead-letter channel for inspection.
 - **Delayed delivery** — Messages can be scheduled for future delivery by specifying
@@ -279,8 +277,8 @@ can replay the entire history or start from any point in the stream.
 
 **Failure scenarios:**
 
-- **No ack within visibility timeout** — Message becomes visible again and is
-  delivered to the next available consumer.
+- **No ack** — Message becomes available again and is delivered to the next
+  available consumer.
 - **Explicit reject** — Message is returned to the queue immediately.
 - **Max receive count exceeded** — Message is moved to the dead-letter queue.
 - **Message expired (TTL)** — Message is removed from the queue automatically.

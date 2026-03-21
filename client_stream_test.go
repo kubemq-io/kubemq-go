@@ -9,8 +9,11 @@ import (
 	"github.com/kubemq-io/kubemq-go/v2/internal/middleware"
 	"github.com/kubemq-io/kubemq-go/v2/internal/testutil"
 	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 func newStreamTestClient(t *testing.T) (*Client, *testutil.MockTransport) {
@@ -193,7 +196,7 @@ func TestClient_QueueUpstream_Success(t *testing.T) {
 				sendCalled <- struct{}{}
 				resultCh <- &transport.QueueUpstreamResult{
 					RefRequestID: requestID,
-					Results: []*transport.SendQueueMessageResultItem{
+					Results: []*transport.QueueSendResultItem{
 						{MessageID: "msg-1", SentAt: 100},
 					},
 				}
@@ -254,128 +257,43 @@ func TestClient_QueueUpstream_TransportError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// QueueDownstream
+// NewQueueDownstreamReceiver
 // ---------------------------------------------------------------------------
 
-func TestClient_QueueDownstream_Success(t *testing.T) {
-	msgCh := make(chan any, 1)
-	errCh := make(chan error, 1)
-
-	c, mt := newStreamTestClient(t)
-	mt.OnQueueDownstream(func(_ context.Context, _ *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error) {
-		return &transport.QueueDownstreamHandle{
-			Messages: msgCh,
-			Errors:   errCh,
-			SendFn:   func(_ *transport.QueueDownstreamSendRequest) error { return nil },
-		}, nil
-	})
-
-	handle, err := c.QueueDownstream(context.Background())
-	require.NoError(t, err)
-	require.NotNil(t, handle)
-
-	msgCh <- &transport.QueueDownstreamResult{
-		TransactionID: "tx-1",
-		RefRequestID:  "ref-1",
-		Messages: []*transport.QueueMessageItem{
-			{ID: "m-1", Channel: "q-ch", Body: []byte("hello")},
-		},
-	}
-
-	select {
-	case m := <-handle.Messages:
-		require.NotNil(t, m)
-		assert.Equal(t, "tx-1", m.TransactionID)
-		assert.Equal(t, "ref-1", m.RefRequestID)
-		require.NotNil(t, m.Message)
-		assert.Equal(t, "m-1", m.Message.ID)
-		assert.Equal(t, "q-ch", m.Message.Channel)
-		assert.Equal(t, []byte("hello"), m.Message.Body)
-	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for message")
-	}
-}
-
-func TestClient_QueueDownstream_ClosedClient(t *testing.T) {
+func TestClient_NewQueueDownstreamReceiver_ClosedClient(t *testing.T) {
 	c, _ := newStreamTestClient(t)
 	_ = c.Close()
 
-	handle, err := c.QueueDownstream(context.Background())
+	receiver, err := c.NewQueueDownstreamReceiver(context.Background())
 	require.Error(t, err)
-	assert.Nil(t, handle)
+	assert.Nil(t, receiver)
 	assert.ErrorIs(t, err, ErrClientClosed)
 }
 
-func TestClient_QueueDownstream_TransportError(t *testing.T) {
+func TestClient_NewQueueDownstreamReceiver_TransportError(t *testing.T) {
 	c, mt := newStreamTestClient(t)
-	mt.OnQueueDownstream(func(_ context.Context, _ *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error) {
+	mt.OnQueueDownstream(func(_ context.Context) (pb.Kubemq_QueuesDownstreamClient, error) {
 		return nil, errors.New("downstream unavailable")
 	})
 
-	handle, err := c.QueueDownstream(context.Background())
+	receiver, err := c.NewQueueDownstreamReceiver(context.Background())
 	require.Error(t, err)
-	assert.Nil(t, handle)
+	assert.Nil(t, receiver)
 	assert.Contains(t, err.Error(), "downstream unavailable")
 }
 
 // ---------------------------------------------------------------------------
-// PollQueue
+// PollQueue (via receiver)
 // ---------------------------------------------------------------------------
-
-func TestClient_PollQueue_Success(t *testing.T) {
-	msgCh := make(chan any, 1)
-	errCh := make(chan error, 1)
-
-	c, mt := newStreamTestClient(t)
-	mt.OnQueueDownstream(func(_ context.Context, _ *transport.QueueDownstreamRequest) (*transport.QueueDownstreamHandle, error) {
-		return &transport.QueueDownstreamHandle{
-			Messages: msgCh,
-			Errors:   errCh,
-			SendFn: func(req *transport.QueueDownstreamSendRequest) error {
-				go func() {
-					msgCh <- &transport.QueueDownstreamResult{
-						TransactionID: "tx-poll",
-						RefRequestID:  req.RequestID,
-						Messages: []*transport.QueueMessageItem{
-							{
-								ID:      "pm-1",
-								Channel: "poll-ch",
-								Body:    []byte("poll-data"),
-								Attributes: &transport.QueueMessageAttributes{
-									Sequence: 1,
-								},
-							},
-						},
-					}
-					close(msgCh)
-				}()
-				return nil
-			},
-		}, nil
-	})
-
-	resp, err := c.PollQueue(context.Background(), &QueuePollRequest{
-		Channel:     "poll-ch",
-		MaxItems:    10,
-		WaitTimeout: 5000,
-		AutoAck:     true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	assert.Equal(t, "tx-poll", resp.TransactionID)
-	require.Len(t, resp.Messages, 1)
-	assert.Equal(t, "pm-1", resp.Messages[0].ID)
-	assert.Equal(t, "poll-ch", resp.Messages[0].Channel)
-}
 
 func TestClient_PollQueue_ClosedClient(t *testing.T) {
 	c, _ := newStreamTestClient(t)
 	_ = c.Close()
 
-	resp, err := c.PollQueue(context.Background(), &QueuePollRequest{
-		Channel:     "poll-ch",
-		MaxItems:    10,
-		WaitTimeout: 1000,
+	resp, err := c.PollQueue(context.Background(), &PollRequest{
+		Channel:            "poll-ch",
+		MaxItems:           10,
+		WaitTimeoutSeconds: 1,
 	})
 	require.Error(t, err)
 	assert.Nil(t, resp)
@@ -385,14 +303,109 @@ func TestClient_PollQueue_ClosedClient(t *testing.T) {
 func TestClient_PollQueue_InvalidChannel(t *testing.T) {
 	c, _ := newStreamTestClient(t)
 
-	resp, err := c.PollQueue(context.Background(), &QueuePollRequest{
-		Channel:     "invalid channel!@#",
-		MaxItems:    10,
-		WaitTimeout: 1000,
+	resp, err := c.PollQueue(context.Background(), &PollRequest{
+		Channel:            "invalid channel!@#",
+		MaxItems:           10,
+		WaitTimeoutSeconds: 1,
 	})
 	require.Error(t, err)
 	assert.Nil(t, resp)
 	var kErr *KubeMQError
 	require.True(t, errors.As(err, &kErr))
 	assert.Equal(t, ErrCodeValidation, kErr.Code)
+}
+
+func TestClient_PollQueue_Success(t *testing.T) {
+	c, mt := newStreamTestClient(t)
+
+	// Use a channel to safely pass the request ID from Send to Recv.
+	reqIDCh := make(chan string, 1)
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	defer streamCancel()
+
+	mt.OnQueueDownstream(func(_ context.Context) (pb.Kubemq_QueuesDownstreamClient, error) {
+		return &fakeDownstreamClient{
+			ctx: streamCtx,
+			sendFn: func(req *pb.QueuesDownstreamRequest) error {
+				select {
+				case reqIDCh <- req.RequestID:
+				default:
+				}
+				return nil
+			},
+			recvFn: func() (*pb.QueuesDownstreamResponse, error) {
+				// Wait for the request ID from Send or context cancellation.
+				select {
+				case reqID := <-reqIDCh:
+					return &pb.QueuesDownstreamResponse{
+						TransactionId:   "tx-poll",
+						RefRequestId:    reqID,
+						RequestTypeData: pb.QueuesDownstreamRequestType_Get,
+						Messages: []*pb.QueueMessage{
+							{MessageID: "pm-1", Channel: "poll-ch", Body: []byte("poll-data")},
+						},
+					}, nil
+				case <-streamCtx.Done():
+					return nil, streamCtx.Err()
+				}
+			},
+		}, nil
+	})
+
+	resp, err := c.PollQueue(context.Background(), &PollRequest{
+		Channel:            "poll-ch",
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Messages, 1)
+	assert.Equal(t, "pm-1", resp.Messages[0].Message.ID)
+}
+
+// fakeDownstreamClient implements pb.Kubemq_QueuesDownstreamClient for testing.
+type fakeDownstreamClient struct {
+	grpc.ClientStream
+	ctx    context.Context
+	sendFn func(req *pb.QueuesDownstreamRequest) error
+	recvFn func() (*pb.QueuesDownstreamResponse, error)
+}
+
+func (f *fakeDownstreamClient) Send(req *pb.QueuesDownstreamRequest) error {
+	if f.sendFn != nil {
+		return f.sendFn(req)
+	}
+	return nil
+}
+
+func (f *fakeDownstreamClient) Recv() (*pb.QueuesDownstreamResponse, error) {
+	if f.recvFn != nil {
+		return f.recvFn()
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (f *fakeDownstreamClient) CloseSend() error { return nil }
+
+func (f *fakeDownstreamClient) Header() (metadata.MD, error) {
+	return nil, nil
+}
+
+func (f *fakeDownstreamClient) Trailer() metadata.MD {
+	return nil
+}
+
+func (f *fakeDownstreamClient) Context() context.Context {
+	if f.ctx != nil {
+		return f.ctx
+	}
+	return context.Background()
+}
+
+func (f *fakeDownstreamClient) SendMsg(_ interface{}) error {
+	return nil
+}
+
+func (f *fakeDownstreamClient) RecvMsg(_ interface{}) error {
+	return nil
 }

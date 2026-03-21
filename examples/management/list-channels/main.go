@@ -53,4 +53,25 @@ func main() {
 			fmt.Printf("  - %s\n", ch.Name)
 		}
 	}
+
+	// Typed convenience methods — no channel-type constant needed.
+	eventsChannels, err := client.ListEventsChannels(ctx, "")
+	if err != nil {
+		log.Println("ListEventsChannels:", err)
+	} else {
+		fmt.Printf("Events channels (typed): %d found\n", len(eventsChannels))
+		for _, ch := range eventsChannels {
+			fmt.Printf("  - %s (active=%v)\n", ch.Name, ch.IsActive)
+		}
+	}
+
+	queuesChannels, err := client.ListQueuesChannels(ctx, "go-")
+	if err != nil {
+		log.Println("ListQueuesChannels:", err)
+	} else {
+		fmt.Printf("Queue channels (typed, matching 'go-'): %d found\n", len(queuesChannels))
+		for _, ch := range queuesChannels {
+			fmt.Printf("  - %s\n", ch.Name)
+		}
+	}
 }

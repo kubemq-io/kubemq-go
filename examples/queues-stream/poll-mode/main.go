@@ -1,8 +1,8 @@
 // Example: queues-stream/poll-mode
 //
 // Demonstrates PollQueue for simple single-shot queue polling.
-// PollQueue is a high-level abstraction over the downstream stream
-// that handles the stream lifecycle automatically.
+// PollQueue is a high-level abstraction that handles the receiver lifecycle
+// automatically with auto-ack.
 //
 // Channel: go-queues-stream.poll-mode
 // Client ID: go-queues-stream-poll-mode-client
@@ -47,22 +47,18 @@ func main() {
 	fmt.Println("Sent 3 messages")
 
 	// PollQueue: single-shot poll with auto-ack.
-	pollResp, err := client.PollQueue(ctx, &kubemq.QueuePollRequest{
-		Channel:     channel,
-		MaxItems:    10,
-		WaitTimeout: 3000,
-		AutoAck:     true,
+	pollResp, err := client.PollQueue(ctx, &kubemq.PollRequest{
+		Channel:            channel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 3,
 	})
 	if err != nil {
 		log.Fatalf("PollQueue: %v", err)
 	}
-	if pollResp.IsError {
-		log.Printf("Poll error: %s", pollResp.Error)
-	} else {
-		fmt.Printf("PollQueue: TransactionID=%s, %d messages\n",
-			pollResp.TransactionID, len(pollResp.Messages))
-		for _, m := range pollResp.Messages {
-			fmt.Printf("  body=%s\n", m.Body)
+	fmt.Printf("PollQueue: %d messages\n", len(pollResp.Messages))
+	for _, dm := range pollResp.Messages {
+		if dm.Message != nil {
+			fmt.Printf("  body=%s\n", dm.Message.Body)
 		}
 	}
 }

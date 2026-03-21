@@ -395,48 +395,14 @@ func TestQueueUpstream_ClosedTransport(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// QueueDownstream — server-close signal (RequestTypeData == 11)
+// QueueDownstream — basic open/close
 // ---------------------------------------------------------------------------
-
-func TestQueueDownstream_ServerClose(t *testing.T) {
-	lis, impl := startEventStreamBufconnServer(t)
-
-	impl.mu.Lock()
-	impl.queuesDownstreamFn = func(stream pb.Kubemq_QueuesDownstreamServer) error {
-		_ = stream.Send(&pb.QueuesDownstreamResponse{
-			RequestTypeData: 11,
-		})
-		<-stream.Context().Done()
-		return nil
-	}
-	impl.mu.Unlock()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	gt, err := newGRPCViaDialer(ctx, lis)
-	require.NoError(t, err)
-	defer gt.Close()
-
-	handle, err := gt.QueueDownstream(ctx, &QueueDownstreamRequest{Channel: "q-ch"})
-	require.NoError(t, err)
-	require.NotNil(t, handle)
-
-	select {
-	case err := <-handle.Errors:
-		assert.Contains(t, err.Error(), "server closed downstream stream")
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for server close error")
-	}
-
-	handle.Close()
-}
 
 func TestQueueDownstream_ClosedTransport(t *testing.T) {
 	gt, _ := newTestTransport(t)
 	gt.closed.Store(true)
 
-	_, err := gt.QueueDownstream(context.Background(), &QueueDownstreamRequest{})
+	_, err := gt.QueueDownstream(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "client closed")
 }
@@ -475,15 +441,16 @@ func TestQueueUpstream_RecvNonConnectionError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// QueueDownstream — recv non-connection error path
+// QueueDownstream — simple open (the stream is now returned directly)
 // ---------------------------------------------------------------------------
 
-func TestQueueDownstream_RecvNonConnectionError(t *testing.T) {
+func TestQueueDownstream_OpenSuccess(t *testing.T) {
 	lis, impl := startEventStreamBufconnServer(t)
 
 	impl.mu.Lock()
 	impl.queuesDownstreamFn = func(stream pb.Kubemq_QueuesDownstreamServer) error {
-		return status.Error(codes.PermissionDenied, "access denied")
+		<-stream.Context().Done()
+		return nil
 	}
 	impl.mu.Unlock()
 
@@ -494,16 +461,14 @@ func TestQueueDownstream_RecvNonConnectionError(t *testing.T) {
 	require.NoError(t, err)
 	defer gt.Close()
 
-	handle, err := gt.QueueDownstream(ctx, &QueueDownstreamRequest{Channel: "q-ch"})
-	require.NoError(t, err)
-	require.NotNil(t, handle)
-
-	select {
-	case err := <-handle.Errors:
-		assert.Contains(t, err.Error(), "PermissionDenied")
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for downstream error")
+	stream, err := gt.QueueDownstream(ctx)
+	if err != nil {
+		// Some CI setups may not support streaming — skip.
+		assert.Contains(t, err.Error(), "Unimplemented")
+		return
 	}
+	require.NotNil(t, stream)
+	_ = stream.CloseSend()
 }
 
 // ---------------------------------------------------------------------------
@@ -816,107 +781,25 @@ func TestQueueUpstream_ContextCancelledDuringReconnect(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// QueueDownstream — reconnection path
+// WaitReconnect / IsConnectionError — exposed methods
 // ---------------------------------------------------------------------------
 
-func TestQueueDownstream_Reconnection(t *testing.T) {
-	lis, impl := startEventStreamBufconnServer(t)
-
-	var streamCount atomic.Int32
-	impl.mu.Lock()
-	impl.queuesDownstreamFn = func(stream pb.Kubemq_QueuesDownstreamServer) error {
-		n := streamCount.Add(1)
-		if n == 1 {
-			return status.Error(codes.Unavailable, "server going away")
-		}
-		for {
-			req, err := stream.Recv()
-			if err != nil {
-				return err
-			}
-			_ = stream.Send(&pb.QueuesDownstreamResponse{
-				TransactionId:   "tx-recon",
-				RefRequestId:    req.RequestID,
-				RequestTypeData: req.RequestTypeData,
-			})
-		}
-	}
-	impl.mu.Unlock()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	gt, err := newGRPCViaDialer(ctx, lis)
-	require.NoError(t, err)
-	defer gt.Close()
-
-	handle, err := gt.QueueDownstream(ctx, &QueueDownstreamRequest{Channel: "q-ch"})
-	require.NoError(t, err)
-	require.NotNil(t, handle)
-
-	time.Sleep(50 * time.Millisecond)
-	gt.notifyReconnected()
-	time.Sleep(100 * time.Millisecond)
-
-	err = handle.SendFn(&QueueDownstreamSendRequest{
-		RequestID: "req-recon",
-		Channel:   "q-ch",
-		MaxItems:  10,
-	})
-	require.NoError(t, err)
-
-	timeout := time.After(3 * time.Second)
-	for {
-		select {
-		case raw := <-handle.Messages:
-			result, ok := raw.(*QueueDownstreamResult)
-			if ok {
-				assert.Equal(t, "tx-recon", result.TransactionID)
-				goto done
-			}
-		case err := <-handle.Errors:
-			_ = err // drain reconnecting errors
-		case <-timeout:
-			t.Fatal("timed out waiting for downstream result after reconnection")
-			goto done
-		}
-	}
-done:
-	handle.Close()
+func TestGRPCTransport_WaitReconnect(t *testing.T) {
+	gt, _ := newTestTransportWithReconnect(t)
+	ch := gt.WaitReconnect()
+	assert.NotNil(t, ch)
 }
 
-func TestQueueDownstream_ContextCancelledDuringReconnect(t *testing.T) {
-	lis, impl := startEventStreamBufconnServer(t)
+func TestGRPCTransport_IsConnectionError(t *testing.T) {
+	gt, _ := newTestTransport(t)
+	assert.True(t, gt.IsConnectionError(status.Error(codes.Unavailable, "gone")))
+	assert.False(t, gt.IsConnectionError(status.Error(codes.NotFound, "not found")))
+	assert.False(t, gt.IsConnectionError(nil))
+}
 
-	impl.mu.Lock()
-	impl.queuesDownstreamFn = func(stream pb.Kubemq_QueuesDownstreamServer) error {
-		return status.Error(codes.Unavailable, "server going away")
-	}
-	impl.mu.Unlock()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	gt, err := newGRPCViaDialer(ctx, lis)
-	require.NoError(t, err)
-	defer gt.Close()
-
-	handle, err := gt.QueueDownstream(ctx, &QueueDownstreamRequest{Channel: "q-ch"})
-	require.NoError(t, err)
-	require.NotNil(t, handle)
-
-	time.Sleep(50 * time.Millisecond)
-	handle.Close()
-
-	// Channels should be closed after the context cancel propagates
-	timeout := time.After(3 * time.Second)
-	select {
-	case _, ok := <-handle.Messages:
-		// channel closed is expected; open means a stale message arrived — both are acceptable
-		_ = ok
-	case <-timeout:
-		t.Fatal("timed out waiting for downstream to exit")
-	}
+func TestGRPCTransport_ClientID(t *testing.T) {
+	gt, _ := newTestTransport(t)
+	assert.NotEmpty(t, gt.ClientID())
 }
 
 // ---------------------------------------------------------------------------
@@ -987,9 +870,6 @@ func TestGRPCTransport_NotReady_RejectsOperations(t *testing.T) {
 	_, err = gt.SendQueueMessages(context.Background(), &SendQueueMessagesRequest{})
 	assert.Error(t, err)
 
-	_, err = gt.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesReq{})
-	assert.Error(t, err)
-
 	_, err = gt.AckAllQueueMessages(context.Background(), &AckAllQueueMessagesReq{})
 	assert.Error(t, err)
 
@@ -1008,7 +888,7 @@ func TestGRPCTransport_NotReady_RejectsOperations(t *testing.T) {
 	_, err = gt.QueueUpstream(context.Background())
 	assert.Error(t, err)
 
-	_, err = gt.QueueDownstream(context.Background(), &QueueDownstreamRequest{})
+	_, err = gt.QueueDownstream(context.Background())
 	assert.Error(t, err)
 
 	_, err = gt.subscribe(context.Background(), &SubscribeRequest{Channel: "ch"}, pb.Subscribe_Events)

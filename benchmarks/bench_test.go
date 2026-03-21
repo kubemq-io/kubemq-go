@@ -67,11 +67,11 @@ func BenchmarkQueueRoundtrip(b *testing.B) {
 			b.Fatalf("queue send failed: %v", err)
 		}
 
-		resp, err := client.ReceiveQueueMessages(ctx, &kubemq.ReceiveQueueMessagesRequest{
-			Channel:             channel,
-			MaxNumberOfMessages: 1,
-			WaitTimeSeconds:     5,
-			IsPeak:              false,
+		resp, err := client.PollQueue(ctx, &kubemq.PollRequest{
+			Channel:            channel,
+			MaxItems:           1,
+			WaitTimeoutSeconds: 5,
+			AutoAck:            true,
 		})
 		if err != nil {
 			b.Fatalf("queue receive failed: %v", err)

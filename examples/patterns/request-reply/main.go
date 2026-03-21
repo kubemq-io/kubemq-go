@@ -42,13 +42,13 @@ func main() {
 			fmt.Printf("Service received request: body=%s\n", q.Body)
 
 			// Process the request and return a reply.
-			resp := kubemq.NewResponse().
+			resp := kubemq.NewQueryReply().
 				SetRequestId(q.Id).
 				SetResponseTo(q.ResponseTo).
 				SetBody([]byte(`{"order_id":"ORD-123","status":"confirmed"}`)).
 				SetMetadata("success").
 				SetExecutedAt(time.Now())
-			_ = client.SendResponse(ctx, resp)
+			_ = client.SendQueryResponse(ctx, resp)
 			close(done)
 		}),
 		kubemq.WithOnError(func(err error) {
