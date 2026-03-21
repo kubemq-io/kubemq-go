@@ -92,7 +92,7 @@ func loadCACert(tlsCfg *tls.Config, cfg *types.TLSConfig) error {
 		if err != nil {
 			return &types.KubeMQError{
 				Code:        types.ErrCodeAuthentication,
-				Message:     fmt.Sprintf("failed to read CA certificate file %q", cfg.CACertFile),
+				Message:     "failed to read CA certificate file",
 				IsRetryable: false,
 				Cause:       err,
 			}

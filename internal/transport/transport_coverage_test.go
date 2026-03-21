@@ -811,7 +811,8 @@ func TestGRPCTransport_BuildDialOptions_WithTLSConfig(t *testing.T) {
 	gt.cfg.TLSConfig = &types.TLSConfig{}
 	gt.cfg.InsecureSkipVerify = true
 	ctx := context.Background()
-	opts := gt.buildDialOptions(ctx)
+	opts, err := gt.buildDialOptions(ctx)
+	require.NoError(t, err)
 	assert.NotEmpty(t, opts)
 }
 
@@ -820,7 +821,8 @@ func TestGRPCTransport_BuildDialOptions_WithCredentialProvider(t *testing.T) {
 	gt.cfg.CredentialProvider = &staticTokenProvider{token: "test-token"}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	opts := gt.buildDialOptions(ctx)
+	opts, err := gt.buildDialOptions(ctx)
+	require.NoError(t, err)
 	assert.NotEmpty(t, opts)
 	if gt.authClose != nil {
 		gt.authClose()
