@@ -253,7 +253,7 @@ func newCardinalityManager(cfg CardinalityConfig, logger types.Logger) *cardinal
 // as a metric attribute value. Returns false when cardinality threshold is
 // exceeded for non-allowlisted channels.
 func (cm *cardinalityManager) ShouldIncludeChannel(channel string) bool {
-	if channel == "" {
+	if cm == nil || channel == "" {
 		return false
 	}
 
@@ -284,10 +284,12 @@ func (cm *cardinalityManager) ShouldIncludeChannel(channel string) bool {
 	if len(cm.seen) >= cm.config.Threshold {
 		if !cm.exceeded {
 			cm.exceeded = true
-			cm.logger.Warn("metric cardinality threshold exceeded — omitting messaging.destination.name for new channels",
-				"threshold", cm.config.Threshold,
-				"channel", channel,
-			)
+			if cm.logger != nil {
+				cm.logger.Warn("metric cardinality threshold exceeded — omitting messaging.destination.name for new channels",
+					"threshold", cm.config.Threshold,
+					"channel", channel,
+				)
+			}
 		}
 		return false
 	}

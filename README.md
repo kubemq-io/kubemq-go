@@ -125,13 +125,13 @@ func main() {
 msg := kubemq.NewQueueMessage().SetChannel("tasks").SetBody([]byte("hello"))
 result, err := client.SendQueueMessage(ctx, msg)
 
-// Receive
-resp, err := client.ReceiveQueueMessages(ctx, &kubemq.ReceiveQueueMessagesRequest{
-    Channel:             "tasks",
-    MaxNumberOfMessages: 1,
-    WaitTimeSeconds:     10,
+// Receive (poll-based)
+resp, err := client.PollQueue(ctx, &kubemq.PollRequest{
+    Channel:            "tasks",
+    MaxItems:           1,
+    WaitTimeoutSeconds: 10,
 })
-// Process resp.Messages, then AckAllQueueMessages
+// Process resp.Messages
 ```
 
 ### Quick Start: Commands (RPC)
@@ -146,12 +146,12 @@ cmdResp, err := client.SendCommand(ctx, kubemq.NewCommand().
 // Handle commands (subscribe)
 sub, err := client.SubscribeToCommands(ctx, "orders", "",
     kubemq.WithOnCommandReceive(func(cmd *kubemq.CommandReceive) {
-        resp := kubemq.NewResponse().
+        resp := kubemq.NewCommandReply().
             SetRequestId(cmd.Id).
             SetResponseTo(cmd.ResponseTo).
             SetBody([]byte("done")).
             SetExecutedAt(time.Now())
-        _ = client.SendResponse(ctx, resp)
+        _ = client.SendCommandResponse(ctx, resp)
     }),
 )
 ```

@@ -1,7 +1,7 @@
 // Example: queues/ack-reject
 //
 // Demonstrates individual message acknowledgment and rejection using
-// the queue downstream stream. Messages can be individually acked
+// the queue downstream receiver. Messages can be individually acked
 // (confirmed) or rejected (nacked) back to the queue.
 //
 // Channel: go-queues.ack-reject
@@ -47,22 +47,26 @@ func main() {
 	fmt.Println("Sent 2 messages")
 
 	// Poll messages with manual acknowledgment (AutoAck=false).
-	pollResp, err := client.PollQueue(ctx, &kubemq.QueuePollRequest{
-		Channel:     channel,
-		MaxItems:    10,
-		WaitTimeout: 5000,
-		AutoAck:     false,
+	receiver, err := client.NewQueueDownstreamReceiver(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer receiver.Close()
+
+	resp, err := receiver.Poll(ctx, &kubemq.PollRequest{
+		Channel:            channel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
+		AutoAck:            false,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if pollResp.IsError {
-		log.Fatalf("Poll failed: %s", pollResp.Error)
-	}
 
-	fmt.Printf("Polled %d messages (txID=%s)\n",
-		len(pollResp.Messages), pollResp.TransactionID)
-	for _, m := range pollResp.Messages {
-		fmt.Printf("  body=%s\n", m.Body)
+	fmt.Printf("Polled %d messages\n", len(resp.Messages))
+	for _, dm := range resp.Messages {
+		if dm.Message != nil {
+			fmt.Printf("  body=%s\n", dm.Message.Body)
+		}
 	}
 }

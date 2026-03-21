@@ -235,7 +235,8 @@ func (c *Client) SendEventStoreStream(ctx context.Context) (*EventStoreStreamHan
 	if err != nil {
 		return nil, err
 	}
-	pubResultCh := make(chan *EventStreamResult, 16)
+	pubResultCh := make(chan *EventStreamResult, 4096)
+	streamCtx := ctx
 	go func() {
 		for r := range handle.Results {
 			if r != nil {
@@ -245,7 +246,8 @@ func (c *Client) SendEventStoreStream(ctx context.Context) (*EventStoreStreamHan
 					Sent:    r.Sent,
 					Error:   r.Error,
 				}:
-				default:
+				case <-streamCtx.Done():
+					return
 				}
 			}
 		}

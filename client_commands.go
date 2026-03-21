@@ -11,7 +11,7 @@ import (
 
 // SubscribeToCommands subscribes to commands on the given channel, returning a
 // Subscription that delivers received commands via the WithOnCommandReceive
-// handler and supports Unsubscribe(). Use SendResponse to reply to received commands.
+// handler and supports Unsubscribe(). Use SendCommandResponse to reply to received commands.
 //
 // Parameters:
 //   - ctx: parent context. Cancelling ctx tears down the subscription.
@@ -21,7 +21,7 @@ import (
 //     command is delivered to exactly one subscriber. Pass "" to receive all
 //     commands (broadcast).
 //   - opts: subscription options. WithOnCommandReceive is required — it sets the
-//     callback for each received command. The handler must call SendResponse to
+//     callback for each received command. The handler must call SendCommandResponse to
 //     reply before Command.Timeout expires. WithOnError is optional.
 //
 // Returns a *Subscription on success. The subscription automatically reconnects
@@ -34,7 +34,7 @@ import (
 //   - AUTHORIZATION: insufficient permissions for this channel
 //   - CANCELLATION: ctx was cancelled before subscription was established
 //
-// See also: CommandReceive, SendCommand, SendResponse, Subscription.
+// See also: CommandReceive, SendCommand, SendCommandResponse, Subscription.
 func (c *Client) SubscribeToCommands(ctx context.Context, channel, group string, opts ...SubscribeOption) (*Subscription, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (c *Client) SubscribeToCommands(ctx context.Context, channel, group string,
 // SendCommand sends a command to a subscriber on the given channel and blocks
 // until a response is received or the timeout expires. Commands implement a
 // request-reply pattern: exactly one subscriber must handle the command and
-// call SendResponse to reply.
+// call SendCommandResponse to reply.
 //
 // Parameters:
 //   - ctx: controls the overall deadline. If ctx expires before a response
@@ -140,7 +140,7 @@ func (c *Client) SubscribeToCommands(ctx context.Context, channel, group string,
 //   - NOT_FOUND: no subscriber is listening on the channel
 //   - CANCELLATION: ctx was cancelled before a response arrived
 //
-// See also: Command, CommandResponse, SubscribeToCommands, SendResponse.
+// See also: Command, CommandResponse, SubscribeToCommands, SendCommandResponse.
 func (c *Client) SendCommand(ctx context.Context, command *Command) (*CommandResponse, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
@@ -193,15 +193,15 @@ func (c *Client) SendCommand(ctx context.Context, command *Command) (*CommandRes
 	}, nil
 }
 
-// SendResponse sends a response to a received command or query. This must be
+// SendCommandResponse sends a response to a received command. This must be
 // called by the subscriber within the sender's Timeout to deliver the reply.
 //
 // Parameters:
 //   - ctx: controls the deadline for the send operation.
-//   - response: the response to send. Response.RequestId must match the original
-//     CommandReceive.Id or QueryReceive.Id. Response.ResponseTo must match the
-//     CommandReceive.ResponseTo or QueryReceive.ResponseTo routing address.
-//     Response.ClientId is auto-populated from client defaults if empty.
+//   - response: the response to send. CommandReply.RequestId must match the
+//     original CommandReceive.Id. CommandReply.ResponseTo must match the
+//     CommandReceive.ResponseTo routing address.
+//     CommandReply.ClientId is auto-populated from client defaults if empty.
 //
 // Possible errors:
 //   - VALIDATION: RequestId or ResponseTo is empty
@@ -209,16 +209,15 @@ func (c *Client) SendCommand(ctx context.Context, command *Command) (*CommandRes
 //   - TIMEOUT: operation exceeded ctx deadline
 //   - AUTHENTICATION: invalid or missing auth token
 //
-// See also: Response, CommandReceive, QueryReceive, SubscribeToCommands,
-// SubscribeToQueries.
-func (c *Client) SendResponse(ctx context.Context, response *Response) error {
+// See also: CommandReply, CommandReceive, SubscribeToCommands.
+func (c *Client) SendCommandResponse(ctx context.Context, response *CommandReply) error {
 	if err := c.checkClosed(); err != nil {
 		return err
 	}
 	if response.ClientId == "" {
 		response.ClientId = c.opts.clientId
 	}
-	if err := validateResponse(response); err != nil {
+	if err := validateCommandReply(response); err != nil {
 		return err
 	}
 	req := &transport.SendResponseRequest{
@@ -230,7 +229,6 @@ func (c *Client) SendResponse(ctx context.Context, response *Response) error {
 		ExecutedAt: response.ExecutedAt,
 		Err:        response.Err,
 		Tags:       response.Tags,
-		Span:       response.Span,
 	}
 	return c.transport.SendResponse(ctx, req)
 }
@@ -245,9 +243,9 @@ func (c *Client) NewCommand() *Command {
 	}
 }
 
-// NewResponse creates a new Response pre-populated with client defaults.
-func (c *Client) NewResponse() *Response {
-	return &Response{
+// NewCommandReply creates a new CommandReply pre-populated with client defaults.
+func (c *Client) NewCommandReply() *CommandReply {
+	return &CommandReply{
 		ClientId: c.opts.clientId,
 		Tags:     map[string]string{},
 	}

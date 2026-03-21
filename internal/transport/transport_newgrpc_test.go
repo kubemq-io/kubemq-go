@@ -242,18 +242,6 @@ func TestNewGRPC_AllOperations(t *testing.T) {
 	assert.NoError(t, err)
 
 	impl.mu.Lock()
-	impl.receiveQueueMessagesFn = func(_ context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
-		return &pb.ReceiveQueueMessagesResponse{RequestID: req.RequestID, MessagesReceived: 0}, nil
-	}
-	impl.mu.Unlock()
-
-	rcvResp, err := gt.ReceiveQueueMessages(ctx, &ReceiveQueueMessagesReq{
-		Channel: "q-ch", MaxNumberOfMessages: 10,
-	})
-	require.NoError(t, err)
-	assert.NotNil(t, rcvResp)
-
-	impl.mu.Lock()
 	impl.ackAllQueueMessagesFn = func(_ context.Context, req *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
 		return &pb.AckAllQueueMessagesResponse{RequestID: req.RequestID, AffectedMessages: 5}, nil
 	}

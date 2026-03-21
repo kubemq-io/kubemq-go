@@ -178,7 +178,7 @@ func (c *Client) PublishEventStore(ctx context.Context, channel string, body []b
 // Example:
 //
 //	result, err := client.SendQueueMessageSimple(ctx, "orders.queue", []byte(`{"id": 123}`))
-func (c *Client) SendQueueMessageSimple(ctx context.Context, channel string, body []byte, opts ...QueueSendOption) (*SendQueueMessageResult, error) {
+func (c *Client) SendQueueMessageSimple(ctx context.Context, channel string, body []byte, opts ...QueueSendOption) (*QueueSendResult, error) {
 	msg := c.NewQueueMessage()
 	msg.Channel = channel
 	msg.Body = body

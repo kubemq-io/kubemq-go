@@ -16,36 +16,42 @@ import (
 // EventsWorker implements the Worker interface for the Events pub/sub pattern.
 type EventsWorker struct {
 	*BaseWorker
+	producersPerChannel int
+	consumersPerChannel int
+	consumerGroup       bool
+	runID               string
 }
 
-// NewEventsWorker creates a new events pattern worker.
-func NewEventsWorker(cfg *config.Config, cp *ClientProvider, logger *slog.Logger) *EventsWorker {
-	bw := NewBaseWorker(PatternEvents, cfg, cp, logger)
+// NewEventsWorker creates a new events pattern worker for a specific channel.
+func NewEventsWorker(cfg *config.Config, cp *ClientProvider, logger *slog.Logger,
+	channelName string, channelIndex int, pc *config.PatternConfig, runID string,
+	patternLatAccum *metrics.LatencyAccumulator) *EventsWorker {
+
+	bw := NewBaseWorker(PatternEvents, cfg, cp, logger, channelName, channelIndex, pc.Rate, patternLatAccum)
 	bw.channelType = "events"
-	return &EventsWorker{BaseWorker: bw}
+	return &EventsWorker{
+		BaseWorker:          bw,
+		producersPerChannel: pc.ProducersPerChannel,
+		consumersPerChannel: pc.ConsumersPerChannel,
+		consumerGroup:       pc.ConsumerGroup,
+		runID:               runID,
+	}
 }
 
-// Start launches consumers and producers for events.
+// Start launches consumers for events on this channel.
 func (w *EventsWorker) Start(ctx context.Context) error {
 	ctx, w.cancel = context.WithCancel(ctx)
 	w.producerCtx, w.producerCancel = context.WithCancel(ctx)
-	cfg := w.Config()
-
-	// Create channel
-	if err := w.CreateChannel(ctx, "events"); err != nil {
-		w.Logger().Error("failed to create events channel", "error", err)
-		return fmt.Errorf("create events channel: %w", err)
-	}
 
 	// Determine consumer group
 	group := ""
-	if cfg.Concurrency.EventsConsumerGroup {
-		group = "go_burnin_events_group"
+	if w.consumerGroup {
+		group = ConsumerGroupName(w.runID, PatternEvents, w.channelIdx)
 	}
 
-	// Start consumers first
-	for i := 0; i < cfg.Concurrency.EventsConsumers; i++ {
-		consumerID := fmt.Sprintf("c-%s-%03d", PatternEvents, i)
+	// Start consumers
+	for i := 0; i < w.consumersPerChannel; i++ {
+		consumerID := ConsumerID(PatternEvents, w.channelIdx, i)
 		if err := w.startConsumer(ctx, consumerID, group); err != nil {
 			return fmt.Errorf("start events consumer %s: %w", consumerID, err)
 		}
@@ -54,13 +60,15 @@ func (w *EventsWorker) Start(ctx context.Context) error {
 	// Mark consumers ready
 	w.MarkConsumerReady()
 
-	// Start producers
-	for i := 0; i < cfg.Concurrency.EventsProducers; i++ {
-		producerID := fmt.Sprintf("p-%s-%03d", PatternEvents, i)
+	return nil
+}
+
+// StartProducers launches producer goroutines. Called after warmup.
+func (w *EventsWorker) StartProducers() {
+	for i := 0; i < w.producersPerChannel; i++ {
+		producerID := ProducerID(PatternEvents, w.channelIdx, i)
 		w.startProducer(w.producerCtx, producerID)
 	}
-
-	return nil
 }
 
 // startConsumer subscribes to events and processes incoming messages.
@@ -107,17 +115,17 @@ func (w *EventsWorker) startProducer(ctx context.Context, producerID string) {
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
+		ws := w.getOrCreateProducerStat(producerID)
 
-		// Open the event stream
 		handle, err := w.Client().SendEventStream(ctx)
 		if err != nil {
 			w.Logger().Error("failed to open event stream", "producer", producerID, "error", err)
 			w.RecordError("stream_open_failure")
+			ws.errors.Add(1)
 			return
 		}
 		defer handle.Close()
 
-		// Drain stream errors in background
 		w.wg.Add(1)
 		go func() {
 			defer w.wg.Done()
@@ -133,6 +141,7 @@ func (w *EventsWorker) startProducer(ctx context.Context, producerID string) {
 					}
 					w.Logger().Error("event stream error", "producer", producerID, "error", streamErr)
 					w.RecordError("stream_error")
+					ws.errors.Add(1)
 				}
 			}
 		}()
@@ -179,11 +188,13 @@ func (w *EventsWorker) startProducer(ctx context.Context, producerID string) {
 
 			if sendErr != nil {
 				w.RecordError("send_failure")
+				ws.errors.Add(1)
 				w.Logger().Error("failed to send event", "producer", producerID, "seq", currentSeq, "error", sendErr)
 				continue
 			}
 
-			metrics.AddBytesSent(w.Pattern(), float64(len(body)))
+			ws.latAccum.Record(sendDuration)
+			w.RecordBytesSent(producerID, len(body))
 			w.RecordSend(producerID, currentSeq)
 		}
 	}()

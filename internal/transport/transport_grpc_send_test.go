@@ -30,7 +30,6 @@ type inlineServer struct {
 	sendResponseFn           func(context.Context, *pb.Response) (*pb.Empty, error)
 	sendQueueMessageFn       func(context.Context, *pb.QueueMessage) (*pb.SendQueueMessageResult, error)
 	sendQueueMessagesBatchFn func(context.Context, *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error)
-	receiveQueueMessagesFn   func(context.Context, *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error)
 	ackAllQueueMessagesFn    func(context.Context, *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error)
 	pingFn                   func(context.Context, *pb.Empty) (*pb.PingResult, error)
 }
@@ -55,9 +54,6 @@ func newInlineServer() *inlineServer {
 				results = append(results, &pb.SendQueueMessageResult{MessageID: m.MessageID})
 			}
 			return &pb.QueueMessagesBatchResponse{BatchID: req.BatchID, Results: results}, nil
-		},
-		receiveQueueMessagesFn: func(_ context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
-			return &pb.ReceiveQueueMessagesResponse{RequestID: req.RequestID}, nil
 		},
 		ackAllQueueMessagesFn: func(_ context.Context, req *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
 			return &pb.AckAllQueueMessagesResponse{RequestID: req.RequestID}, nil
@@ -118,13 +114,6 @@ func (s *inlineServer) SendQueueMessage(ctx context.Context, m *pb.QueueMessage)
 func (s *inlineServer) SendQueueMessagesBatch(ctx context.Context, req *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error) {
 	s.mu.Lock()
 	fn := s.sendQueueMessagesBatchFn
-	s.mu.Unlock()
-	return fn(ctx, req)
-}
-
-func (s *inlineServer) ReceiveQueueMessages(ctx context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
-	s.mu.Lock()
-	fn := s.receiveQueueMessagesFn
 	s.mu.Unlock()
 	return fn(ctx, req)
 }
@@ -352,53 +341,6 @@ func TestGRPCTransport_SendResponse_Error(t *testing.T) {
 	assert.Contains(t, err.Error(), "send response failed")
 }
 
-func TestGRPCTransport_ReceiveQueueMessages(t *testing.T) {
-	gt, impl := newTestTransport(t)
-
-	impl.mu.Lock()
-	impl.receiveQueueMessagesFn = func(_ context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
-		return &pb.ReceiveQueueMessagesResponse{
-			RequestID: req.RequestID,
-			Messages: []*pb.QueueMessage{
-				{MessageID: "m1", Channel: req.Channel, Body: []byte("msg1")},
-			},
-			MessagesReceived: 1,
-			IsPeak:           req.IsPeak,
-		}, nil
-	}
-	impl.mu.Unlock()
-
-	result, err := gt.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesReq{
-		RequestID:           "recv-1",
-		Channel:             "queues.test",
-		MaxNumberOfMessages: 10,
-		WaitTimeSeconds:     1,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Equal(t, int32(1), result.MessagesReceived)
-	require.Len(t, result.Messages, 1)
-	assert.Equal(t, "m1", result.Messages[0].ID)
-}
-
-func TestGRPCTransport_ReceiveQueueMessages_Error(t *testing.T) {
-	gt, impl := newTestTransport(t)
-
-	impl.mu.Lock()
-	impl.receiveQueueMessagesFn = func(_ context.Context, _ *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
-		return nil, fmt.Errorf("receive error")
-	}
-	impl.mu.Unlock()
-
-	result, err := gt.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesReq{
-		RequestID: "recv-2",
-		Channel:   "queues.test",
-	})
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "receive queue messages failed")
-}
-
 func TestGRPCTransport_AckAllQueueMessages(t *testing.T) {
 	gt, impl := newTestTransport(t)
 
@@ -509,9 +451,6 @@ func TestGRPCTransport_Closed_RejectsOperations(t *testing.T) {
 	assert.Error(t, err)
 
 	_, err = gt.AckAllQueueMessages(context.Background(), &AckAllQueueMessagesReq{})
-	assert.Error(t, err)
-
-	_, err = gt.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesReq{})
 	assert.Error(t, err)
 
 	_, err = gt.SendQueueMessages(context.Background(), &SendQueueMessagesRequest{})

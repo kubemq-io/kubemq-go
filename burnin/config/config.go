@@ -4,6 +4,7 @@ import (
 	"bytes"
 	cryptorand "crypto/rand"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -12,10 +13,47 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const ConfigVersion = 1
+const ConfigVersion = "2"
+
+// ThresholdsConfig holds per-pattern threshold overrides.
+type ThresholdsConfig struct {
+	MaxLossPct       *float64 `yaml:"max_loss_pct" json:"max_loss_pct,omitempty"`
+	MaxP99LatencyMS  *float64 `yaml:"max_p99_latency_ms" json:"max_p99_latency_ms,omitempty"`
+	MaxP999LatencyMS *float64 `yaml:"max_p999_latency_ms" json:"max_p999_latency_ms,omitempty"`
+}
+
+// PatternConfig holds per-pattern configuration for v2.
+type PatternConfig struct {
+	Enabled              bool              `yaml:"enabled" json:"enabled"`
+	Channels             int               `yaml:"channels" json:"channels"`
+	ProducersPerChannel  int               `yaml:"producers_per_channel" json:"producers_per_channel"`
+	ConsumersPerChannel  int               `yaml:"consumers_per_channel" json:"consumers_per_channel"`
+	ConsumerGroup        bool              `yaml:"consumer_group" json:"consumer_group"`
+	SendersPerChannel    int               `yaml:"senders_per_channel" json:"senders_per_channel"`
+	RespondersPerChannel int               `yaml:"responders_per_channel" json:"responders_per_channel"`
+	Rate                 int               `yaml:"rate" json:"rate"`
+	Thresholds           *ThresholdsConfig `yaml:"thresholds,omitempty" json:"thresholds,omitempty"`
+}
+
+// WarmupConfig holds warmup settings.
+type WarmupConfig struct {
+	MaxParallelChannels int    `yaml:"max_parallel_channels" json:"max_parallel_channels"`
+	TimeoutPerChannelMs int    `yaml:"timeout_per_channel_ms" json:"timeout_per_channel_ms"`
+	WarmupDuration      string `yaml:"warmup_duration" json:"warmup_duration"`
+}
+
+// PerPatternThreshold holds per-pattern threshold overrides from the API config.
+type PerPatternThreshold struct {
+	MaxLossPct       float64
+	MaxP99LatencyMS  float64
+	MaxP999LatencyMS float64
+	HasLossPct       bool
+	HasP99           bool
+	HasP999          bool
+}
 
 type Config struct {
-	Version  int      `yaml:"version"`
+	Version  string   `yaml:"version"`
 	Warnings []string `yaml:"-"` // populated during Load for unknown YAML fields, etc.
 
 	Broker struct {
@@ -30,36 +68,15 @@ type Config struct {
 	WarmupDuration time.Duration `yaml:"-"`
 	WarmupStr      string        `yaml:"warmup_duration"`
 
-	Rates struct {
-		Events      int `yaml:"events"`
-		EventsStore int `yaml:"events_store"`
-		QueueStream int `yaml:"queue_stream"`
-		QueueSimple int `yaml:"queue_simple"`
-		Commands    int `yaml:"commands"`
-		Queries     int `yaml:"queries"`
-	} `yaml:"rates"`
+	// v2 patterns config
+	Patterns map[string]*PatternConfig `yaml:"patterns" json:"patterns"`
 
-	Concurrency struct {
-		EventsProducers      int  `yaml:"events_producers"`
-		EventsConsumers      int  `yaml:"events_consumers"`
-		EventsConsumerGroup  bool `yaml:"events_consumer_group"`
-		EventsStoreProducers int  `yaml:"events_store_producers"`
-		EventsStoreConsumers int  `yaml:"events_store_consumers"`
-		EventsStoreConsGroup bool `yaml:"events_store_consumer_group"`
-		QueueStreamProducers int  `yaml:"queue_stream_producers"`
-		QueueStreamConsumers int  `yaml:"queue_stream_consumers"`
-		QueueSimpleProducers int  `yaml:"queue_simple_producers"`
-		QueueSimpleConsumers int  `yaml:"queue_simple_consumers"`
-		CommandsSenders      int  `yaml:"commands_senders"`
-		CommandsResponders   int  `yaml:"commands_responders"`
-		QueriesSenders       int  `yaml:"queries_senders"`
-		QueriesResponders    int  `yaml:"queries_responders"`
-	} `yaml:"concurrency"`
+	// v2 warmup config
+	Warmup WarmupConfig `yaml:"warmup" json:"warmup"`
 
 	Queue struct {
 		PollMaxMessages        int  `yaml:"poll_max_messages"`
 		PollWaitTimeoutSeconds int  `yaml:"poll_wait_timeout_seconds"`
-		VisibilitySeconds      int  `yaml:"visibility_seconds"`
 		AutoAck                bool `yaml:"auto_ack"`
 		MaxDepth               int  `yaml:"max_depth"`
 	} `yaml:"queue"`
@@ -111,6 +128,14 @@ type Config struct {
 		SDKVersion string `yaml:"sdk_version"`
 	} `yaml:"output"`
 
+	CORS struct {
+		Origins string `yaml:"origins"`
+	} `yaml:"cors"`
+
+	StartingTimeoutSeconds int                             `yaml:"-"`
+	PatternEnabled         map[string]bool                 `yaml:"-"`
+	PerPatternThresholds   map[string]*PerPatternThreshold `yaml:"-"`
+
 	Thresholds struct {
 		MaxLossPct        float64       `yaml:"max_loss_pct"`
 		MaxEventsLossPct  float64       `yaml:"max_events_loss_pct"`
@@ -126,6 +151,44 @@ type Config struct {
 	} `yaml:"thresholds"`
 }
 
+// AllPatternNames returns the list of all 6 pattern names.
+var AllPatternNames = []string{"events", "events_store", "queue_stream", "queue_simple", "commands", "queries"}
+
+// IsRPCPattern returns true for commands and queries.
+func IsRPCPattern(p string) bool {
+	return p == "commands" || p == "queries"
+}
+
+// IsPubSubPattern returns true for events and events_store.
+func IsPubSubPattern(p string) bool {
+	return p == "events" || p == "events_store"
+}
+
+// DefaultPatternConfig returns default pattern config for a given pattern.
+func DefaultPatternConfig(pattern string) *PatternConfig {
+	pc := &PatternConfig{
+		Enabled:              true,
+		Channels:             1,
+		ProducersPerChannel:  1,
+		ConsumersPerChannel:  1,
+		ConsumerGroup:        false,
+		SendersPerChannel:    1,
+		RespondersPerChannel: 1,
+		Rate:                 100,
+	}
+	switch pattern {
+	case "queue_stream":
+		pc.Rate = 50
+	case "queue_simple":
+		pc.Rate = 50
+	case "commands":
+		pc.Rate = 20
+	case "queries":
+		pc.Rate = 20
+	}
+	return pc
+}
+
 func DefaultConfig() *Config {
 	c := &Config{}
 	c.Version = ConfigVersion
@@ -137,29 +200,21 @@ func DefaultConfig() *Config {
 	c.RunID = ""
 	c.WarmupStr = ""
 
-	c.Rates.Events = 100
-	c.Rates.EventsStore = 100
-	c.Rates.QueueStream = 50
-	c.Rates.QueueSimple = 50
-	c.Rates.Commands = 20
-	c.Rates.Queries = 20
+	// Initialize v2 patterns with defaults
+	c.Patterns = make(map[string]*PatternConfig)
+	for _, p := range AllPatternNames {
+		c.Patterns[p] = DefaultPatternConfig(p)
+	}
 
-	c.Concurrency.EventsProducers = 1
-	c.Concurrency.EventsConsumers = 1
-	c.Concurrency.EventsStoreProducers = 1
-	c.Concurrency.EventsStoreConsumers = 1
-	c.Concurrency.QueueStreamProducers = 1
-	c.Concurrency.QueueStreamConsumers = 1
-	c.Concurrency.QueueSimpleProducers = 1
-	c.Concurrency.QueueSimpleConsumers = 1
-	c.Concurrency.CommandsSenders = 1
-	c.Concurrency.CommandsResponders = 1
-	c.Concurrency.QueriesSenders = 1
-	c.Concurrency.QueriesResponders = 1
+	// Warmup defaults
+	c.Warmup = WarmupConfig{
+		MaxParallelChannels: 10,
+		TimeoutPerChannelMs: 5000,
+		WarmupDuration:      "",
+	}
 
 	c.Queue.PollMaxMessages = 10
 	c.Queue.PollWaitTimeoutSeconds = 5
-	c.Queue.VisibilitySeconds = 30
 	c.Queue.AutoAck = false
 	c.Queue.MaxDepth = 1_000_000
 
@@ -202,6 +257,13 @@ func DefaultConfig() *Config {
 	c.Thresholds.MaxDuration = 168 * time.Hour
 	c.Thresholds.MaxDurationStr = "168h"
 
+	c.CORS.Origins = "*"
+	c.StartingTimeoutSeconds = 60
+	c.PatternEnabled = map[string]bool{
+		"events": true, "events_store": true, "queue_stream": true,
+		"queue_simple": true, "commands": true, "queries": true,
+	}
+
 	return c
 }
 
@@ -230,22 +292,67 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	applyEnvOverrides(c)
-
 	if err := parseDurations(c); err != nil {
 		return nil, err
 	}
 
 	if c.RunID == "" {
-		c.RunID = randomRunID()
+		c.RunID = RandomRunID()
+	}
+
+	// Ensure patterns map is populated
+	if c.Patterns == nil {
+		c.Patterns = make(map[string]*PatternConfig)
+	}
+	for _, p := range AllPatternNames {
+		if _, ok := c.Patterns[p]; !ok {
+			c.Patterns[p] = DefaultPatternConfig(p)
+		}
+	}
+
+	// Build PatternEnabled from patterns
+	c.PatternEnabled = make(map[string]bool)
+	for _, p := range AllPatternNames {
+		if pc, ok := c.Patterns[p]; ok {
+			c.PatternEnabled[p] = pc.Enabled
+		} else {
+			c.PatternEnabled[p] = true
+		}
+	}
+
+	// Build PerPatternThresholds from patterns
+	c.PerPatternThresholds = make(map[string]*PerPatternThreshold)
+	for _, p := range AllPatternNames {
+		if pc, ok := c.Patterns[p]; ok && pc.Thresholds != nil {
+			ppt := &PerPatternThreshold{}
+			if pc.Thresholds.MaxLossPct != nil {
+				ppt.MaxLossPct = *pc.Thresholds.MaxLossPct
+				ppt.HasLossPct = true
+			}
+			if pc.Thresholds.MaxP99LatencyMS != nil {
+				ppt.MaxP99LatencyMS = *pc.Thresholds.MaxP99LatencyMS
+				ppt.HasP99 = true
+			}
+			if pc.Thresholds.MaxP999LatencyMS != nil {
+				ppt.MaxP999LatencyMS = *pc.Thresholds.MaxP999LatencyMS
+				ppt.HasP999 = true
+			}
+			c.PerPatternThresholds[p] = ppt
+		}
 	}
 
 	// Apply mode-dependent warmup default
-	if c.WarmupStr == "" {
+	if c.WarmupStr == "" && c.Warmup.WarmupDuration == "" {
 		if c.Mode == "benchmark" {
 			c.WarmupDuration = 60 * time.Second
 		} else {
 			c.WarmupDuration = 0
+		}
+	} else if c.Warmup.WarmupDuration != "" && c.WarmupStr == "" {
+		c.WarmupStr = c.Warmup.WarmupDuration
+		d, err := parseDuration(c.WarmupStr)
+		if err == nil {
+			c.WarmupDuration = d
 		}
 	}
 
@@ -253,9 +360,6 @@ func Load(path string) (*Config, error) {
 }
 
 func FindConfigFile(cliPath string) string {
-	if v := os.Getenv("BURNIN_CONFIG_FILE"); v != "" {
-		return v
-	}
 	if cliPath != "" {
 		return cliPath
 	}
@@ -268,12 +372,32 @@ func FindConfigFile(cliPath string) string {
 	return ""
 }
 
+// GetPatternRate returns the rate for a pattern from the v2 config.
+func (c *Config) GetPatternRate(pattern string) int {
+	if pc, ok := c.Patterns[pattern]; ok {
+		return pc.Rate
+	}
+	return 100
+}
+
+// GetPatternChannels returns the number of channels for a pattern.
+func (c *Config) GetPatternChannels(pattern string) int {
+	if pc, ok := c.Patterns[pattern]; ok {
+		return pc.Channels
+	}
+	return 1
+}
+
+// GetPatternConfig returns the PatternConfig for a pattern, or nil.
+func (c *Config) GetPatternConfig(pattern string) *PatternConfig {
+	if c.Patterns == nil {
+		return nil
+	}
+	return c.Patterns[pattern]
+}
+
 func (c *Config) Validate() []error {
 	var errs []error
-
-	if c.Version > ConfigVersion {
-		errs = append(errs, fmt.Errorf("config version %d is higher than supported version %d", c.Version, ConfigVersion))
-	}
 
 	if c.Mode != "soak" && c.Mode != "benchmark" {
 		errs = append(errs, fmt.Errorf("mode must be 'soak' or 'benchmark', got %q", c.Mode))
@@ -283,48 +407,88 @@ func (c *Config) Validate() []error {
 		errs = append(errs, fmt.Errorf("duration must be >= 0"))
 	}
 
+	if c.Mode == "soak" && c.Duration <= 0 {
+		// Allow 0 for infinite soak
+	}
+
 	if c.Broker.Address == "" {
 		errs = append(errs, fmt.Errorf("broker address is required"))
 	}
 
-	// Validate rates
-	for _, r := range []struct {
-		name string
-		val  int
-	}{
-		{"events_rate", c.Rates.Events},
-		{"events_store_rate", c.Rates.EventsStore},
-		{"queue_stream_rate", c.Rates.QueueStream},
-		{"queue_simple_rate", c.Rates.QueueSimple},
-		{"commands_rate", c.Rates.Commands},
-		{"queries_rate", c.Rates.Queries},
-	} {
-		if r.val <= 0 && c.Mode == "soak" {
-			errs = append(errs, fmt.Errorf("%s must be > 0 in soak mode, got %d", r.name, r.val))
+	// Validate patterns
+	enabledCount := 0
+	totalWorkers := 0
+	for _, pname := range AllPatternNames {
+		pc := c.GetPatternConfig(pname)
+		if pc == nil {
+			continue
+		}
+		if !pc.Enabled {
+			continue
+		}
+		enabledCount++
+
+		// Validate channels
+		if pc.Channels < 1 || pc.Channels > 1000 {
+			errs = append(errs, fmt.Errorf("%s.channels: must be 1-1000, got %d", pname, pc.Channels))
+		}
+
+		// Validate rate
+		if pc.Rate < 0 {
+			errs = append(errs, fmt.Errorf("%s.rate: must be >= 0, got %d", pname, pc.Rate))
+		}
+
+		if IsRPCPattern(pname) {
+			if pc.SendersPerChannel < 1 {
+				errs = append(errs, fmt.Errorf("%s.senders_per_channel: must be >= 1, got %d", pname, pc.SendersPerChannel))
+			}
+			if pc.RespondersPerChannel < 1 {
+				errs = append(errs, fmt.Errorf("%s.responders_per_channel: must be >= 1, got %d", pname, pc.RespondersPerChannel))
+			}
+			totalWorkers += pc.Channels * (pc.SendersPerChannel + pc.RespondersPerChannel)
+		} else {
+			if pc.ProducersPerChannel < 1 {
+				errs = append(errs, fmt.Errorf("%s.producers_per_channel: must be >= 1, got %d", pname, pc.ProducersPerChannel))
+			}
+			if pc.ConsumersPerChannel < 1 {
+				errs = append(errs, fmt.Errorf("%s.consumers_per_channel: must be >= 1, got %d", pname, pc.ConsumersPerChannel))
+			}
+			totalWorkers += pc.Channels * (pc.ProducersPerChannel + pc.ConsumersPerChannel)
+		}
+
+		// Soft limit warnings
+		if !IsRPCPattern(pname) {
+			if pc.ProducersPerChannel > 100 {
+				errs = append(errs, fmt.Errorf("WARNING: %s.producers_per_channel: %d exceeds recommended max 100", pname, pc.ProducersPerChannel))
+			}
+			if pc.ConsumersPerChannel > 100 {
+				errs = append(errs, fmt.Errorf("WARNING: %s.consumers_per_channel: %d exceeds recommended max 100", pname, pc.ConsumersPerChannel))
+			}
+		}
+
+		// Validate per-pattern thresholds
+		if pc.Thresholds != nil {
+			if pc.Thresholds.MaxLossPct != nil {
+				v := *pc.Thresholds.MaxLossPct
+				if v < 0 || v > 100 {
+					errs = append(errs, fmt.Errorf("%s.thresholds.max_loss_pct: must be 0-100, got %.1f", pname, v))
+				}
+			}
+			if pc.Thresholds.MaxP99LatencyMS != nil {
+				if *pc.Thresholds.MaxP99LatencyMS <= 0 {
+					errs = append(errs, fmt.Errorf("%s.thresholds.max_p99_latency_ms: must be > 0", pname))
+				}
+			}
+			if pc.Thresholds.MaxP999LatencyMS != nil {
+				if *pc.Thresholds.MaxP999LatencyMS <= 0 {
+					errs = append(errs, fmt.Errorf("%s.thresholds.max_p999_latency_ms: must be > 0", pname))
+				}
+			}
 		}
 	}
 
-	// Validate concurrency
-	for _, cc := range []struct {
-		name string
-		val  int
-	}{
-		{"events_producers", c.Concurrency.EventsProducers},
-		{"events_consumers", c.Concurrency.EventsConsumers},
-		{"events_store_producers", c.Concurrency.EventsStoreProducers},
-		{"events_store_consumers", c.Concurrency.EventsStoreConsumers},
-		{"queue_stream_producers", c.Concurrency.QueueStreamProducers},
-		{"queue_stream_consumers", c.Concurrency.QueueStreamConsumers},
-		{"queue_simple_producers", c.Concurrency.QueueSimpleProducers},
-		{"queue_simple_consumers", c.Concurrency.QueueSimpleConsumers},
-		{"commands_senders", c.Concurrency.CommandsSenders},
-		{"commands_responders", c.Concurrency.CommandsResponders},
-		{"queries_senders", c.Concurrency.QueriesSenders},
-		{"queries_responders", c.Concurrency.QueriesResponders},
-	} {
-		if cc.val < 1 {
-			errs = append(errs, fmt.Errorf("%s must be >= 1, got %d", cc.name, cc.val))
-		}
+	if enabledCount == 0 {
+		errs = append(errs, fmt.Errorf("at least one pattern must be enabled"))
 	}
 
 	if c.Queue.PollMaxMessages < 1 {
@@ -340,7 +504,7 @@ func (c *Config) Validate() []error {
 	}
 
 	if c.Message.SizeMode == "fixed" && c.Message.SizeBytes < 64 {
-		errs = append(errs, fmt.Errorf("message size_bytes must be >= 64, got %d", c.Message.SizeBytes))
+		errs = append(errs, fmt.Errorf("message.size_bytes: must be >= 64, got %d", c.Message.SizeBytes))
 	}
 
 	if c.Message.ReorderWindow < 100 {
@@ -348,7 +512,11 @@ func (c *Config) Validate() []error {
 	}
 
 	if c.Metrics.Port < 1 || c.Metrics.Port > 65535 {
-		errs = append(errs, fmt.Errorf("metrics port must be 1-65535, got %d", c.Metrics.Port))
+		errs = append(errs, fmt.Errorf("api.port: must be 1-65535, got %d", c.Metrics.Port))
+	}
+
+	if c.Shutdown.DrainTimeoutSeconds <= 0 {
+		errs = append(errs, fmt.Errorf("shutdown.drain_timeout_seconds: must be > 0, got %d", c.Shutdown.DrainTimeoutSeconds))
 	}
 
 	if c.Thresholds.MaxLossPct < 0 || c.Thresholds.MaxLossPct > 100 {
@@ -363,20 +531,85 @@ func (c *Config) Validate() []error {
 	if c.Thresholds.MaxErrorRatePct < 0 || c.Thresholds.MaxErrorRatePct > 100 {
 		errs = append(errs, fmt.Errorf("max_error_rate_pct must be 0-100"))
 	}
+	if c.Thresholds.MaxP99LatencyMS <= 0 {
+		errs = append(errs, fmt.Errorf("max_p99_latency_ms must be > 0"))
+	}
+	if c.Thresholds.MaxP999LatencyMS <= 0 {
+		errs = append(errs, fmt.Errorf("max_p999_latency_ms must be > 0"))
+	}
+	if c.Thresholds.MinThroughputPct <= 0 || c.Thresholds.MinThroughputPct > 100 {
+		errs = append(errs, fmt.Errorf("min_throughput_pct must be > 0 and <= 100"))
+	}
+	if c.Thresholds.MaxMemoryGrowth < 1.0 {
+		errs = append(errs, fmt.Errorf("max_memory_growth_factor must be >= 1.0"))
+	}
+	if c.Thresholds.MaxDowntimePct < 0 || c.Thresholds.MaxDowntimePct > 100 {
+		errs = append(errs, fmt.Errorf("max_downtime_pct must be 0-100"))
+	}
 	if c.Recovery.ReconnectMultiplier < 1.0 {
 		errs = append(errs, fmt.Errorf("reconnect_multiplier must be >= 1.0, got %f", c.Recovery.ReconnectMultiplier))
 	}
 
-	if c.Thresholds.MaxMemoryGrowth < 1.0 {
-		errs = append(errs, fmt.Errorf("max_memory_growth_factor must be >= 1.0"))
+	// Resource guard warnings
+	if totalWorkers > 500 {
+		errs = append(errs, fmt.Errorf("WARNING: high worker count: %d -- may impact system resources", totalWorkers))
 	}
 
-	// Warn: auto_ack with visibility_seconds
-	if c.Queue.AutoAck && c.Queue.VisibilitySeconds > 0 {
-		errs = append(errs, fmt.Errorf("WARNING: auto_ack=true with visibility_seconds=%d; visibility has no effect with auto_ack", c.Queue.VisibilitySeconds))
+	// Estimate memory
+	estMemoryMB := float64(totalWorkers) * (float64(c.Message.ReorderWindow)*8/1024/1024 + 0.5)
+	if estMemoryMB > 4096 {
+		errs = append(errs, fmt.Errorf("WARNING: estimated memory %.0f MB exceeds 4096 MB for %d workers", estMemoryMB, totalWorkers))
 	}
+
+	// gRPC throughput warnings per client type
+	c.checkGRPCThroughput(&errs)
 
 	return errs
+}
+
+func (c *Config) checkGRPCThroughput(errs *[]error) {
+	// pubSubClient: events + events_store
+	pubsubRate := 0
+	for _, p := range []string{"events", "events_store"} {
+		if pc, ok := c.Patterns[p]; ok && pc.Enabled {
+			pubsubRate += pc.Channels * pc.Rate
+		}
+	}
+	if pubsubRate > 50000 {
+		*errs = append(*errs, fmt.Errorf("WARNING: high aggregate rate %d msgs/s through single gRPC connection -- may cause transport bottleneck (pubSubClient)", pubsubRate))
+	}
+
+	// queuesClient: queue_stream + queue_simple
+	queuesRate := 0
+	for _, p := range []string{"queue_stream", "queue_simple"} {
+		if pc, ok := c.Patterns[p]; ok && pc.Enabled {
+			queuesRate += pc.Channels * pc.Rate
+		}
+	}
+	if queuesRate > 50000 {
+		*errs = append(*errs, fmt.Errorf("WARNING: high aggregate rate %d msgs/s through single gRPC connection -- may cause transport bottleneck (queuesClient)", queuesRate))
+	}
+
+	// cqClient: commands + queries
+	cqRate := 0
+	for _, p := range []string{"commands", "queries"} {
+		if pc, ok := c.Patterns[p]; ok && pc.Enabled {
+			cqRate += pc.Channels * pc.Rate
+		}
+	}
+	if cqRate > 50000 {
+		*errs = append(*errs, fmt.Errorf("WARNING: high aggregate rate %d msgs/s through single gRPC connection -- may cause transport bottleneck (cqClient)", cqRate))
+	}
+}
+
+// LogResourceWarnings logs resource guard warnings from validation.
+func (c *Config) LogResourceWarnings(logger *slog.Logger) {
+	errs := c.Validate()
+	for _, e := range errs {
+		if strings.HasPrefix(e.Error(), "WARNING:") {
+			logger.Warn(e.Error())
+		}
+	}
 }
 
 // BrokerHost returns host part of the broker address.
@@ -476,115 +709,62 @@ func parseDuration(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-func randomRunID() string {
+func RandomRunID() string {
 	b := make([]byte, 4)
 	_, _ = cryptorand.Read(b)
 	return fmt.Sprintf("%08x", b)
 }
 
-// Explicit env var mapping table per spec Section 6.0.3
-func applyEnvOverrides(c *Config) {
-	envStr("BURNIN_BROKER_ADDRESS", &c.Broker.Address)
-	envStr("BURNIN_CLIENT_ID_PREFIX", &c.Broker.ClientIDPrefix)
-	envStr("BURNIN_MODE", &c.Mode)
-	envStr("BURNIN_DURATION", &c.DurationStr)
-	envStr("BURNIN_RUN_ID", &c.RunID)
-	envStr("BURNIN_WARMUP_DURATION", &c.WarmupStr)
-	envStr("BURNIN_SDK_VERSION", &c.Output.SDKVersion)
-	envStr("BURNIN_REPORT_OUTPUT_FILE", &c.Output.ReportFile)
-
-	envInt("BURNIN_EVENTS_RATE", &c.Rates.Events)
-	envInt("BURNIN_EVENTS_STORE_RATE", &c.Rates.EventsStore)
-	envInt("BURNIN_QUEUE_STREAM_RATE", &c.Rates.QueueStream)
-	envInt("BURNIN_QUEUE_SIMPLE_RATE", &c.Rates.QueueSimple)
-	envInt("BURNIN_COMMANDS_RATE", &c.Rates.Commands)
-	envInt("BURNIN_QUERIES_RATE", &c.Rates.Queries)
-
-	envInt("BURNIN_EVENTS_PRODUCERS", &c.Concurrency.EventsProducers)
-	envInt("BURNIN_EVENTS_CONSUMERS", &c.Concurrency.EventsConsumers)
-	envBool("BURNIN_EVENTS_CONSUMER_GROUP", &c.Concurrency.EventsConsumerGroup)
-	envInt("BURNIN_EVENTS_STORE_PRODUCERS", &c.Concurrency.EventsStoreProducers)
-	envInt("BURNIN_EVENTS_STORE_CONSUMERS", &c.Concurrency.EventsStoreConsumers)
-	envBool("BURNIN_EVENTS_STORE_CONSUMER_GROUP", &c.Concurrency.EventsStoreConsGroup)
-	envInt("BURNIN_QUEUE_STREAM_PRODUCERS", &c.Concurrency.QueueStreamProducers)
-	envInt("BURNIN_QUEUE_STREAM_CONSUMERS", &c.Concurrency.QueueStreamConsumers)
-	envInt("BURNIN_QUEUE_SIMPLE_PRODUCERS", &c.Concurrency.QueueSimpleProducers)
-	envInt("BURNIN_QUEUE_SIMPLE_CONSUMERS", &c.Concurrency.QueueSimpleConsumers)
-	envInt("BURNIN_COMMANDS_SENDERS", &c.Concurrency.CommandsSenders)
-	envInt("BURNIN_COMMANDS_RESPONDERS", &c.Concurrency.CommandsResponders)
-	envInt("BURNIN_QUERIES_SENDERS", &c.Concurrency.QueriesSenders)
-	envInt("BURNIN_QUERIES_RESPONDERS", &c.Concurrency.QueriesResponders)
-
-	envInt("BURNIN_QUEUE_POLL_MAX_MESSAGES", &c.Queue.PollMaxMessages)
-	envInt("BURNIN_QUEUE_POLL_WAIT_TIMEOUT_SECONDS", &c.Queue.PollWaitTimeoutSeconds)
-	envInt("BURNIN_QUEUE_VISIBILITY_SECONDS", &c.Queue.VisibilitySeconds)
-	envBool("BURNIN_QUEUE_AUTO_ACK", &c.Queue.AutoAck)
-	envInt("BURNIN_MAX_QUEUE_DEPTH", &c.Queue.MaxDepth)
-
-	envInt("BURNIN_RPC_TIMEOUT_MS", &c.RPC.TimeoutMS)
-
-	envStr("BURNIN_MSG_SIZE_MODE", &c.Message.SizeMode)
-	envInt("BURNIN_MSG_SIZE_BYTES", &c.Message.SizeBytes)
-	envStr("BURNIN_MSG_SIZE_DISTRIBUTION", &c.Message.SizeDistribution)
-	envInt("BURNIN_REORDER_WINDOW", &c.Message.ReorderWindow)
-
-	envInt("BURNIN_METRICS_PORT", &c.Metrics.Port)
-	envStr("BURNIN_REPORT_INTERVAL", &c.Metrics.ReportStr)
-
-	envStr("BURNIN_LOG_FORMAT", &c.Logging.Format)
-	envStr("BURNIN_LOG_LEVEL", &c.Logging.Level)
-
-	envStr("BURNIN_FORCED_DISCONNECT_INTERVAL", &c.ForcedDisconnect.IntervalStr)
-	envStr("BURNIN_FORCED_DISCONNECT_DURATION", &c.ForcedDisconnect.DurationStr)
-
-	envStr("BURNIN_RECONNECT_INTERVAL", &c.Recovery.ReconnectIntervalStr)
-	envStr("BURNIN_RECONNECT_MAX_INTERVAL", &c.Recovery.ReconnectMaxStr)
-	envFloat("BURNIN_RECONNECT_MULTIPLIER", &c.Recovery.ReconnectMultiplier)
-
-	envInt("BURNIN_SHUTDOWN_DRAIN_SECONDS", &c.Shutdown.DrainTimeoutSeconds)
-	envBool("BURNIN_CLEANUP_CHANNELS", &c.Shutdown.CleanupChannels)
-
-	envFloat("BURNIN_MAX_LOSS_PCT", &c.Thresholds.MaxLossPct)
-	envFloat("BURNIN_MAX_EVENTS_LOSS_PCT", &c.Thresholds.MaxEventsLossPct)
-	envFloat("BURNIN_MAX_DUPLICATION_PCT", &c.Thresholds.MaxDuplicationPct)
-	envFloat("BURNIN_MAX_P99_LATENCY_MS", &c.Thresholds.MaxP99LatencyMS)
-	envFloat("BURNIN_MAX_P999_LATENCY_MS", &c.Thresholds.MaxP999LatencyMS)
-	envFloat("BURNIN_MIN_THROUGHPUT_PCT", &c.Thresholds.MinThroughputPct)
-	envFloat("BURNIN_MAX_ERROR_RATE_PCT", &c.Thresholds.MaxErrorRatePct)
-	envFloat("BURNIN_MAX_MEMORY_GROWTH_FACTOR", &c.Thresholds.MaxMemoryGrowth)
-	envFloat("BURNIN_MAX_DOWNTIME_PCT", &c.Thresholds.MaxDowntimePct)
-	envStr("BURNIN_MAX_DURATION", &c.Thresholds.MaxDurationStr)
+// ParseDurationsPublic is the exported version of parseDurations.
+func ParseDurationsPublic(c *Config) error {
+	return parseDurations(c)
 }
 
-func envStr(key string, dst *string) {
-	if v := os.Getenv(key); v != "" {
-		*dst = v
+// ParseDurationValue parses a duration string supporting "d" suffix for days.
+func ParseDurationValue(s string) (time.Duration, error) {
+	return parseDuration(s)
+}
+
+// DetectV1Config checks if raw JSON contains v1 config fields and returns errors.
+func DetectV1Config(raw map[string]interface{}) []string {
+	var errs []string
+
+	// Layer 1: top-level v1 keys
+	if _, ok := raw["concurrency"]; ok {
+		errs = append(errs, "detected v1 field: concurrency")
 	}
-}
+	if _, ok := raw["rates"]; ok {
+		errs = append(errs, "detected v1 field: rates")
+	}
+	if _, ok := raw["enabled_patterns"]; ok {
+		errs = append(errs, "detected v1 field: enabled_patterns")
+	}
 
-func envInt(key string, dst *int) {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			*dst = n
+	// Layer 2: old field names in patterns block
+	if pats, ok := raw["patterns"]; ok {
+		if patsMap, ok := pats.(map[string]interface{}); ok {
+			for pname, pval := range patsMap {
+				if pvalMap, ok := pval.(map[string]interface{}); ok {
+					for _, oldField := range []string{"producers", "consumers", "senders", "responders"} {
+						if _, ok := pvalMap[oldField]; ok {
+							errs = append(errs, fmt.Sprintf("detected v1 field: patterns.%s.%s -- use %s_per_channel", pname, oldField, oldField))
+						}
+					}
+				}
+			}
 		}
 	}
+
+	return errs
 }
 
-func envFloat(key string, dst *float64) {
-	if v := os.Getenv(key); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			*dst = f
+// TotalChannelCount returns the total number of channels across all enabled patterns.
+func (c *Config) TotalChannelCount() int {
+	total := 0
+	for _, pname := range AllPatternNames {
+		if pc, ok := c.Patterns[pname]; ok && pc.Enabled {
+			total += pc.Channels
 		}
 	}
-}
-
-func envBool(key string, dst *bool) {
-	if v := os.Getenv(key); v != "" {
-		switch strings.ToLower(v) {
-		case "true", "1", "yes":
-			*dst = true
-		case "false", "0", "no":
-			*dst = false
-		}
-	}
+	return total
 }

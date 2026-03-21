@@ -16,32 +16,32 @@ import (
 // CommandsWorker implements the Worker interface for the Commands (RPC request/response) pattern.
 type CommandsWorker struct {
 	*BaseWorker
+	sendersPerChannel    int
+	respondersPerChannel int
 }
 
-// NewCommandsWorker creates a new commands pattern worker.
-func NewCommandsWorker(cfg *config.Config, cp *ClientProvider, logger *slog.Logger) *CommandsWorker {
-	bw := NewBaseWorker(PatternCommands, cfg, cp, logger)
+// NewCommandsWorker creates a new commands pattern worker for a specific channel.
+func NewCommandsWorker(cfg *config.Config, cp *ClientProvider, logger *slog.Logger,
+	channelName string, channelIndex int, pc *config.PatternConfig,
+	patternLatAccum *metrics.LatencyAccumulator) *CommandsWorker {
+
+	bw := NewBaseWorker(PatternCommands, cfg, cp, logger, channelName, channelIndex, pc.Rate, patternLatAccum)
 	bw.channelType = "commands"
 	return &CommandsWorker{
-		BaseWorker: bw,
+		BaseWorker:           bw,
+		sendersPerChannel:    pc.SendersPerChannel,
+		respondersPerChannel: pc.RespondersPerChannel,
 	}
 }
 
-// Start launches responders and senders for commands.
+// Start launches responders for commands on this channel.
 func (w *CommandsWorker) Start(ctx context.Context) error {
 	ctx, w.cancel = context.WithCancel(ctx)
 	w.producerCtx, w.producerCancel = context.WithCancel(ctx)
-	cfg := w.Config()
-
-	// Create channel
-	if err := w.CreateChannel(ctx, "commands"); err != nil {
-		w.Logger().Error("failed to create commands channel", "error", err)
-		return fmt.Errorf("create commands channel: %w", err)
-	}
 
 	// Start responders first so they are ready to handle commands
-	for i := 0; i < cfg.Concurrency.CommandsResponders; i++ {
-		responderID := fmt.Sprintf("c-%s-%03d", PatternCommands, i)
+	for i := 0; i < w.respondersPerChannel; i++ {
+		responderID := ResponderID(PatternCommands, w.channelIdx, i)
 		if err := w.startResponder(ctx, responderID); err != nil {
 			return fmt.Errorf("start commands responder %s: %w", responderID, err)
 		}
@@ -50,32 +50,35 @@ func (w *CommandsWorker) Start(ctx context.Context) error {
 	// Mark consumers ready
 	w.MarkConsumerReady()
 
-	// Start senders
-	for i := 0; i < cfg.Concurrency.CommandsSenders; i++ {
-		senderID := fmt.Sprintf("p-%s-%03d", PatternCommands, i)
+	return nil
+}
+
+// StartProducers launches sender goroutines. Called after warmup.
+func (w *CommandsWorker) StartProducers() {
+	for i := 0; i < w.sendersPerChannel; i++ {
+		senderID := SenderID(PatternCommands, w.channelIdx, i)
 		w.startSender(w.producerCtx, senderID)
 	}
-
-	return nil
 }
 
 // startResponder subscribes to commands and sends responses.
 func (w *CommandsWorker) startResponder(ctx context.Context, responderID string) error {
+	ws := w.getOrCreateConsumerStat(responderID)
+
 	sub, err := w.Client().SubscribeToCommands(ctx, w.ChannelName(), "",
 		kubemq.WithOnCommandReceive(func(cmd *kubemq.CommandReceive) {
-			// Skip warmup messages
 			if cmd.Tags != nil && cmd.Tags["warmup"] == "true" {
-				_ = w.Client().SendResponse(ctx, &kubemq.Response{
+				_ = w.Client().SendCommandResponse(ctx, &kubemq.CommandReply{
 					RequestId: cmd.Id, ResponseTo: cmd.ResponseTo, ExecutedAt: time.Now(),
 				})
 				return
 			}
 
-			// Verify CRC of the received body
 			msg, decErr := payload.Decode(cmd.Body)
 			if decErr != nil {
 				w.Logger().Error("failed to decode command", "responder", responderID, "error", decErr)
 				w.RecordError("decode_failure")
+				ws.errors.Add(1)
 				return
 			}
 
@@ -85,8 +88,7 @@ func (w *CommandsWorker) startResponder(ctx context.Context, responderID string)
 				w.Logger().Error("CRC mismatch in command", "responder", responderID, "producer", msg.ProducerID, "seq", msg.Sequence)
 			}
 
-			// Send response back, echoing the body
-			resp := &kubemq.Response{
+			resp := &kubemq.CommandReply{
 				RequestId:  cmd.Id,
 				ResponseTo: cmd.ResponseTo,
 				Metadata:   "",
@@ -96,21 +98,24 @@ func (w *CommandsWorker) startResponder(ctx context.Context, responderID string)
 				Tags:       cmd.Tags,
 			}
 
-			if sendErr := w.Client().SendResponse(ctx, resp); sendErr != nil {
+			if sendErr := w.Client().SendCommandResponse(ctx, resp); sendErr != nil {
 				w.Logger().Error("failed to send command response", "responder", responderID, "error", sendErr)
 				w.RecordError("response_send_failure")
+				ws.errors.Add(1)
+			} else {
+				ws.responded.Add(1)
 			}
 		}),
 		kubemq.WithOnError(func(err error) {
 			w.Logger().Error("responder subscription error", "responder", responderID, "error", err)
 			w.RecordError("subscription_error")
+			ws.errors.Add(1)
 		}),
 	)
 	if err != nil {
 		return fmt.Errorf("subscribe to commands: %w", err)
 	}
 
-	// Monitor subscription in a goroutine
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
@@ -134,6 +139,7 @@ func (w *CommandsWorker) startSender(ctx context.Context, senderID string) {
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
+		ws := w.getOrCreateProducerStat(senderID)
 
 		for {
 			select {
@@ -177,25 +183,39 @@ func (w *CommandsWorker) startSender(ctx context.Context, senderID string) {
 				metrics.IncRPCResponse(w.Pattern(), "error")
 				w.IncRPCError()
 				w.RecordError("send_failure")
-				w.Logger().Error("failed to send command", "sender", senderID, "seq", currentSeq, "error", err)
+				ws.errors.Add(1)
+				ws.rpcError.Add(1)
+				// Backoff on send errors to avoid retry-throttle cascade
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(200 * time.Millisecond):
+				}
 				continue
 			}
 
-			// Transport succeeded - count as sent
-			metrics.AddBytesSent(w.Pattern(), float64(len(body)))
+			w.RecordBytesSent(senderID, len(body))
 			w.sent.Add(1)
 			metrics.IncSent(w.Pattern(), senderID)
+			w.peakRate.Record()
+			w.rateWindow.Record()
+			ws.sent.Add(1)
+			ws.rateWindow.Record()
 
 			if resp.Error != "" {
 				if resp.Error == "timeout" || resp.Error == "rpc timeout" {
 					metrics.IncRPCResponse(w.Pattern(), "timeout")
 					w.IncRPCTimeout()
 					w.RecordError("timeout")
+					ws.rpcTimeout.Add(1)
+					ws.errors.Add(1)
 					w.Logger().Warn("command timed out", "sender", senderID, "seq", currentSeq)
 				} else {
 					metrics.IncRPCResponse(w.Pattern(), "error")
 					w.IncRPCError()
 					w.RecordError("rpc_error")
+					ws.rpcError.Add(1)
+					ws.errors.Add(1)
 					w.Logger().Error("command error response", "sender", senderID, "seq", currentSeq, "error", resp.Error)
 				}
 				continue
@@ -208,9 +228,14 @@ func (w *CommandsWorker) startSender(ctx context.Context, senderID string) {
 				metrics.IncReceived(w.Pattern(), senderID)
 				metrics.ObserveLatency(w.Pattern(), elapsed)
 				w.latAccum.Record(elapsed)
+				// Dual-write to pattern-level accumulator
+				if w.patternLatAccum != nil {
+					w.patternLatAccum.Record(elapsed)
+				}
 				w.RPCLatencyAccumulator().Record(elapsed)
+				ws.rpcSuccess.Add(1)
+				ws.latAccum.Record(elapsed)
 
-				// Record sequence for tracking
 				isDup, isOOO := w.trk.Record(senderID, currentSeq)
 				if isDup {
 					metrics.IncDuplicated(w.Pattern())
@@ -222,6 +247,8 @@ func (w *CommandsWorker) startSender(ctx context.Context, senderID string) {
 				metrics.IncRPCResponse(w.Pattern(), "error")
 				w.IncRPCError()
 				w.RecordError("not_executed")
+				ws.rpcError.Add(1)
+				ws.errors.Add(1)
 				w.Logger().Warn("command not executed", "sender", senderID, "seq", currentSeq)
 			}
 		}

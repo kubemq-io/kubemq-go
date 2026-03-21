@@ -149,37 +149,6 @@ func TestValidateContent_HasBodyOnly(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestValidateQueueReceive_MaxMsgZero(t *testing.T) {
-	err := validateQueueReceive(0, 10)
-	require.Error(t, err)
-	var kErr *KubeMQError
-	require.True(t, errors.As(err, &kErr))
-	assert.Contains(t, kErr.Message, "MaxNumberOfMessages")
-}
-
-func TestValidateQueueReceive_MaxMsgTooHigh(t *testing.T) {
-	err := validateQueueReceive(1025, 10)
-	require.Error(t, err)
-}
-
-func TestValidateQueueReceive_NegativeWait(t *testing.T) {
-	err := validateQueueReceive(10, -1)
-	require.Error(t, err)
-	var kErr *KubeMQError
-	require.True(t, errors.As(err, &kErr))
-	assert.Contains(t, kErr.Message, "WaitTimeSeconds")
-}
-
-func TestValidateQueueReceive_WaitTooHigh(t *testing.T) {
-	err := validateQueueReceive(10, 3601)
-	require.Error(t, err)
-}
-
-func TestValidateQueueReceive_ValidBoundary(t *testing.T) {
-	assert.NoError(t, validateQueueReceive(1, 0))
-	assert.NoError(t, validateQueueReceive(1024, 3600))
-}
-
 func TestValidateChannelStrict_Wildcard(t *testing.T) {
 	err := validateChannelStrict("orders.*")
 	require.Error(t, err)

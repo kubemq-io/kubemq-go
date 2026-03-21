@@ -1,7 +1,7 @@
 // Example: queues/peek-messages
 //
-// Demonstrates peeking at queue messages without consuming them.
-// Peek allows you to view messages that remain in the queue.
+// Demonstrates polling queue messages without auto-ack (transactional).
+// Messages are received and can be individually acknowledged or rejected.
 //
 // Channel: go-queues.peek-messages
 // Client ID: go-queues-peek-messages-client
@@ -34,30 +34,36 @@ func main() {
 
 	channel := "go-queues.peek-messages"
 
-	// Send a message to peek at.
+	// Send a message to receive.
 	_, err = client.SendQueueMessage(ctx, kubemq.NewQueueMessage().
 		SetChannel(channel).
-		SetBody([]byte("peek at me")))
+		SetBody([]byte("transactional message")))
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("Message sent")
 
-	// Peek at messages (IsPeak=true means view without consuming).
-	peekResp, err := client.ReceiveQueueMessages(ctx, &kubemq.ReceiveQueueMessagesRequest{
-		Channel:             channel,
-		MaxNumberOfMessages: 10,
-		WaitTimeSeconds:     5,
-		IsPeak:              true,
+	// Poll without auto-ack (transactional mode).
+	resp, err := client.PollQueue(ctx, &kubemq.PollRequest{
+		Channel:            channel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
+		AutoAck:            false,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if peekResp.IsError {
-		log.Fatalf("Peek failed: %s", peekResp.Error)
+	if resp.IsError {
+		log.Fatalf("Poll failed: %s", resp.Error)
 	}
-	fmt.Printf("Peek: %d messages (still in queue)\n", peekResp.MessagesReceived)
-	for _, m := range peekResp.Messages {
-		fmt.Printf("  peek: body=%s\n", m.Body)
+	fmt.Printf("Polled: %d messages (pending ack)\n", len(resp.Messages))
+	for _, dsMsg := range resp.Messages {
+		fmt.Printf("  body=%s\n", dsMsg.Message.Body)
 	}
+
+	// Acknowledge all messages in the transaction.
+	if err := resp.AckAll(); err != nil {
+		log.Fatalf("AckAll failed: %s", err)
+	}
+	fmt.Println("All messages acknowledged")
 }
