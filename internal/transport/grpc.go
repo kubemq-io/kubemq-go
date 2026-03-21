@@ -162,7 +162,12 @@ func NewGRPC(ctx context.Context, cfg Config) (*grpcTransport, error) { //nolint
 	tctx, cancel := context.WithCancel(context.Background())
 	t.cancelCtx = cancel
 
-	t.dialOpts = t.buildDialOptions(tctx)
+	dialOpts, err := t.buildDialOptions(tctx)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	t.dialOpts = dialOpts
 
 	connCtx, connCancel := context.WithTimeout(ctx, cfg.ConnectionTimeout)
 	defer connCancel()
@@ -402,7 +407,7 @@ func (t *grpcTransport) dial(ctx context.Context) error {
 	return nil
 }
 
-func (t *grpcTransport) buildDialOptions(clientCtx context.Context) []grpc.DialOption {
+func (t *grpcTransport) buildDialOptions(clientCtx context.Context) ([]grpc.DialOption, error) {
 	connOptions := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(t.cfg.MaxReceiveSize),
@@ -415,19 +420,15 @@ func (t *grpcTransport) buildDialOptions(clientCtx context.Context) []grpc.DialO
 	case t.cfg.TLSConfig != nil || t.cfg.InsecureSkipVerify:
 		tlsCfg, err := buildTLSConfigWithLogger(t.cfg.TLSConfig, t.cfg.InsecureSkipVerify, t.logger)
 		if err != nil {
-			t.logger.Error("TLS setup failed, falling back to insecure", "error", err)
-			connOptions = append(connOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		} else {
-			connOptions = append(connOptions, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
+			return nil, fmt.Errorf("TLS setup failed: %w", err)
 		}
+		connOptions = append(connOptions, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
 	case t.cfg.IsSecured:
 		tlsCreds, err := t.buildLegacyTLSCredentials()
 		if err != nil {
-			t.logger.Error("TLS setup failed, falling back to insecure", "error", err)
-			connOptions = append(connOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		} else {
-			connOptions = append(connOptions, grpc.WithTransportCredentials(tlsCreds))
+			return nil, fmt.Errorf("TLS setup failed: %w", err)
 		}
+		connOptions = append(connOptions, grpc.WithTransportCredentials(tlsCreds))
 	default:
 		connOptions = append(connOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
@@ -463,7 +464,7 @@ func (t *grpcTransport) buildDialOptions(clientCtx context.Context) []grpc.DialO
 		grpc.WithChainStreamInterceptor(streamInterceptors...),
 	)
 
-	return connOptions
+	return connOptions, nil
 }
 
 // buildLegacyTLSCredentials handles the v1 IsSecured/CertFile/CertData fields
