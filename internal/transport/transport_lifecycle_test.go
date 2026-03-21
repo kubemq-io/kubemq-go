@@ -127,7 +127,8 @@ func TestGRPCTransport_LogSecurityWarnings_NoTLS(t *testing.T) {
 func TestGRPCTransport_BuildDialOptions_Insecure(t *testing.T) {
 	gt, _ := newTestTransport(t)
 	ctx := context.Background()
-	opts := gt.buildDialOptions(ctx)
+	opts, err := gt.buildDialOptions(ctx)
+	require.NoError(t, err)
 	assert.NotEmpty(t, opts)
 }
 
@@ -136,7 +137,8 @@ func TestGRPCTransport_BuildDialOptions_WithAuthToken(t *testing.T) {
 	gt.cfg.AuthToken = "test-token"
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	opts := gt.buildDialOptions(ctx)
+	opts, err := gt.buildDialOptions(ctx)
+	require.NoError(t, err)
 	assert.NotEmpty(t, opts)
 	if gt.authClose != nil {
 		gt.authClose()
@@ -147,7 +149,8 @@ func TestGRPCTransport_BuildDialOptions_InsecureSkipVerify(t *testing.T) {
 	gt, _ := newTestTransport(t)
 	gt.cfg.InsecureSkipVerify = true
 	ctx := context.Background()
-	opts := gt.buildDialOptions(ctx)
+	opts, err := gt.buildDialOptions(ctx)
+	require.NoError(t, err)
 	assert.NotEmpty(t, opts)
 }
 
@@ -192,8 +195,9 @@ func TestGRPCTransport_BuildDialOptions_LegacySecured_NoCert(t *testing.T) {
 	gt, _ := newTestTransport(t)
 	gt.cfg.IsSecured = true
 	ctx := context.Background()
-	opts := gt.buildDialOptions(ctx)
-	assert.NotEmpty(t, opts)
+	_, err := gt.buildDialOptions(ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "TLS setup failed")
 }
 
 func TestGRPCTransport_CreateChannel(t *testing.T) {
