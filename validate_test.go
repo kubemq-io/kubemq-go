@@ -246,27 +246,41 @@ func TestValidateQueueMessage_NegativeMaxReceive(t *testing.T) {
 	assert.Contains(t, kErr.Message, "max receive count must be non-negative")
 }
 
-func TestValidateResponse_Valid(t *testing.T) {
-	r := &Response{RequestId: "req-1", ResponseTo: "ch"}
-	assert.NoError(t, validateResponse(r))
+func TestValidateCommandReply_Valid(t *testing.T) {
+	r := &CommandReply{RequestId: "req-1", ResponseTo: "ch"}
+	assert.NoError(t, validateCommandReply(r))
 }
 
-func TestValidateResponse_NoRequestId(t *testing.T) {
-	r := &Response{ResponseTo: "ch"}
-	err := validateResponse(r)
+func TestValidateCommandReply_NoRequestId(t *testing.T) {
+	r := &CommandReply{ResponseTo: "ch"}
+	err := validateCommandReply(r)
 	require.Error(t, err)
 	var kErr *KubeMQError
 	require.True(t, errors.As(err, &kErr))
 	assert.Contains(t, kErr.Message, "requestId is required")
 }
 
-func TestValidateResponse_NoResponseTo(t *testing.T) {
-	r := &Response{RequestId: "req-1"}
-	err := validateResponse(r)
+func TestValidateCommandReply_NoResponseTo(t *testing.T) {
+	r := &CommandReply{RequestId: "req-1"}
+	err := validateCommandReply(r)
 	require.Error(t, err)
 	var kErr *KubeMQError
 	require.True(t, errors.As(err, &kErr))
 	assert.Contains(t, kErr.Message, "responseTo channel is required")
+}
+
+func TestValidateQueryReply_Valid(t *testing.T) {
+	r := &QueryReply{RequestId: "req-1", ResponseTo: "ch"}
+	assert.NoError(t, validateQueryReply(r))
+}
+
+func TestValidateQueryReply_NoRequestId(t *testing.T) {
+	r := &QueryReply{ResponseTo: "ch"}
+	err := validateQueryReply(r)
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Contains(t, kErr.Message, "requestId is required")
 }
 
 func TestValidation_BeforeNetwork(t *testing.T) {

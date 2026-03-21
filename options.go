@@ -176,7 +176,8 @@ func WithRetryPolicy(p RetryPolicy) Option {
 }
 
 // WithMaxConcurrentRetries limits the number of concurrent retry attempts
-// per client instance. Default: 10.
+// per client instance. Default: 0 (unlimited).
+// Deprecated: This setting is no longer needed. Kept for backward compatibility.
 func WithMaxConcurrentRetries(n int) Option {
 	return newFuncOption(func(o *Options) {
 		o.maxConcurrentRetries = n
@@ -380,8 +381,8 @@ func GetDefaultOptions() *Options {
 		permitKeepaliveWithoutStream: true,
 		drainTimeout:                 5 * time.Second,
 		retryPolicy:                  types.DefaultRetryPolicy(),
-		maxConcurrentRetries:         10,
-		cardinalityThreshold:         100,
+		maxConcurrentRetries:         0,
+		cardinalityThreshold:         10000,
 		callbackConfig:               DefaultCallbackConfig(),
 	}
 }

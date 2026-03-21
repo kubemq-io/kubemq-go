@@ -289,29 +289,28 @@ certificate is missing, incorrect, or the server's certificate is self-signed.
 
 **Error message:**
 ```
-kubemq TIMEOUT: visibility timeout expired for message {id} on channel "tasks"
+kubemq TIMEOUT: message {id} not acknowledged on channel "tasks"
 ```
 
-**Cause:** A queue message was received but not acknowledged (ack) within
-the visibility timeout period.
+**Cause:** A queue message was received but not acknowledged (ack) in time.
 
 **Solution:**
 
-1. Acknowledge messages promptly after processing:
+1. Acknowledge messages promptly after processing using the downstream receiver:
    ```go
-   resp, _ := client.ReceiveQueueMessages(ctx, &kubemq.ReceiveQueueMessagesRequest{
-       Channel:             "tasks",
-       MaxNumberOfMessages: 1,
-       WaitTimeSeconds:     10,
+   receiver, _ := client.NewQueueDownstreamReceiver(ctx)
+   defer receiver.Close()
+   resp, _ := receiver.Poll(ctx, &kubemq.PollRequest{
+       Channel:            "tasks",
+       MaxItems:           1,
+       WaitTimeoutSeconds: 10,
+       AutoAck:            false,
    })
-   // Process the messages
-   client.AckAllQueueMessages(ctx, &kubemq.AckAllQueueMessagesRequest{
-       Channel:         "tasks",
-       WaitTimeSeconds: 5,
-   })
+   // Process the messages, then ack
+   resp.AckAll()
    ```
-2. If processing takes longer, reduce batch size or increase visibility timeout on the server.
-3. Ensure `IsPeak: false` when you intend to consume (not peek) messages.
+2. If processing takes longer, reduce batch size.
+3. Ensure `AutoAck: false` when you need manual acknowledgment.
 
 ---
 

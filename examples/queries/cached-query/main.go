@@ -40,12 +40,12 @@ func main() {
 	sub, err := client.SubscribeToQueries(ctx, channel, "",
 		kubemq.WithOnQueryReceive(func(q *kubemq.QueryReceive) {
 			fmt.Printf("Handler called: body=%s\n", q.Body)
-			resp := kubemq.NewResponse().
+			resp := kubemq.NewQueryReply().
 				SetRequestId(q.Id).
 				SetResponseTo(q.ResponseTo).
 				SetBody([]byte("cached-result")).
 				SetExecutedAt(time.Now())
-			_ = client.SendResponse(ctx, resp)
+			_ = client.SendQueryResponse(ctx, resp)
 			select {
 			case handlerCalled <- struct{}{}:
 			default:

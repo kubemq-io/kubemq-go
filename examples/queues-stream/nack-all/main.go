@@ -1,6 +1,6 @@
 // Example: queues-stream/nack-all
 //
-// Demonstrates rejecting all messages in a transaction using NAckAll.
+// Demonstrates rejecting all messages in a transaction using NackAll.
 // Rejected messages are returned to the queue for reprocessing (up to
 // the MaxReceiveCount limit, after which they are discarded).
 //
@@ -46,46 +46,35 @@ func main() {
 	}
 	fmt.Println("Message sent")
 
-	// Receive the message via downstream stream.
-	downstream, err := client.QueueDownstream(ctx)
+	// Receive the message via downstream receiver.
+	receiver, err := client.NewQueueDownstreamReceiver(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer downstream.Close()
+	defer receiver.Close()
 
-	err = downstream.Send(&kubemq.QueueDownstreamRequest{
-		RequestID:   fmt.Sprintf("req-get-%d", time.Now().UnixNano()),
-		ClientID:    "go-queues-stream-nack-all-client",
-		RequestType: kubemq.QueueDownstreamGet,
-		Channel:     channel,
-		MaxItems:    10,
-		WaitTimeout: 5000,
-		AutoAck:     false,
+	resp, err := receiver.Poll(ctx, &kubemq.PollRequest{
+		Channel:            channel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
+		AutoAck:            false,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Wait longer than WaitTimeout so the server has time to respond.
-	var txID string
-	select {
-	case msg, ok := <-downstream.Messages:
-		if ok && msg != nil {
-			txID = msg.TransactionID
-			fmt.Printf("Received: body=%s tx=%s\n", msg.Message.Body, msg.TransactionID)
+	for _, dm := range resp.Messages {
+		if dm.Message != nil {
+			fmt.Printf("Received: body=%s tx=%s\n", dm.Message.Body, dm.TransactionID)
 		}
-	case <-time.After(10 * time.Second):
-		log.Fatal("No messages received")
 	}
 
 	// NAckAll: reject all messages in the transaction (return to queue).
-	if txID != "" {
-		fmt.Printf("NAckAll: rejecting all messages from tx=%s\n", txID)
-		_ = downstream.Send(&kubemq.QueueDownstreamRequest{
-			RequestID:        "req-nack-all",
-			RequestType:      kubemq.QueueDownstreamNAckAll,
-			RefTransactionID: txID,
-		})
+	if len(resp.Messages) > 0 {
+		fmt.Printf("NAckAll: rejecting all messages from tx=%s\n", resp.Messages[0].TransactionID)
+		if err := resp.NackAll(); err != nil {
+			log.Printf("NackAll: %v", err)
+		}
 		fmt.Println("All messages rejected (returned to queue)")
 	}
 }

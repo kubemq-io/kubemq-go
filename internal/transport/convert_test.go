@@ -365,12 +365,7 @@ func TestConvertNilFields(t *testing.T) {
 	})
 
 	t.Run("nil send queue message result", func(t *testing.T) {
-		result := SendQueueMessageResultFromProto(nil)
-		assert.Nil(t, result)
-	})
-
-	t.Run("nil receive queue messages response", func(t *testing.T) {
-		result := ReceiveQueueMessagesRespFromProto(nil)
+		result := QueueSendResultFromProto(nil)
 		assert.Nil(t, result)
 	})
 

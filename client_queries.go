@@ -11,7 +11,7 @@ import (
 
 // SubscribeToQueries subscribes to queries on the given channel, returning a
 // Subscription that delivers received queries via the WithOnQueryReceive
-// handler and supports Unsubscribe(). Use SendResponse to reply to received queries.
+// handler and supports Unsubscribe(). Use SendQueryResponse to reply to received queries.
 //
 // Parameters:
 //   - ctx: parent context. Cancelling ctx tears down the subscription.
@@ -21,7 +21,7 @@ import (
 //     query is delivered to exactly one subscriber. Pass "" to receive all
 //     queries (broadcast).
 //   - opts: subscription options. WithOnQueryReceive is required — it sets the
-//     callback for each received query. The handler must call SendResponse to
+//     callback for each received query. The handler must call SendQueryResponse to
 //     reply before Query.Timeout expires. WithOnError is optional.
 //
 // Returns a *Subscription on success. The subscription automatically reconnects
@@ -34,7 +34,7 @@ import (
 //   - AUTHORIZATION: insufficient permissions for this channel
 //   - CANCELLATION: ctx was cancelled before subscription was established
 //
-// See also: QueryReceive, SendQuery, SendResponse, Subscription.
+// See also: QueryReceive, SendQuery, SendQueryResponse, Subscription.
 func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, opts ...SubscribeOption) (*Subscription, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, 
 // SendQuery sends a query to a subscriber on the given channel and blocks
 // until a response is received or the timeout expires. Queries implement a
 // request-reply pattern with optional response caching: exactly one subscriber
-// must handle the query and call SendResponse to reply.
+// must handle the query and call SendQueryResponse to reply.
 //
 // Parameters:
 //   - ctx: controls the overall deadline. If ctx expires before a response
@@ -143,7 +143,7 @@ func (c *Client) SubscribeToQueries(ctx context.Context, channel, group string, 
 //   - NOT_FOUND: no subscriber is listening on the channel
 //   - CANCELLATION: ctx was cancelled before a response arrived
 //
-// See also: Query, QueryResponse, SubscribeToQueries, SendResponse.
+// See also: Query, QueryResponse, SubscribeToQueries, SendQueryResponse.
 func (c *Client) SendQuery(ctx context.Context, query *Query) (*QueryResponse, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
@@ -199,6 +199,54 @@ func (c *Client) SendQuery(ctx context.Context, query *Query) (*QueryResponse, e
 		Error:            result.Error,
 		Tags:             result.Tags,
 	}, nil
+}
+
+// SendQueryResponse sends a response to a received query. This must be
+// called by the subscriber within the sender's Timeout to deliver the reply.
+//
+// Parameters:
+//   - ctx: controls the deadline for the send operation.
+//   - response: the response to send. QueryReply.RequestId must match the
+//     original QueryReceive.Id. QueryReply.ResponseTo must match the
+//     QueryReceive.ResponseTo routing address.
+//     QueryReply.ClientId is auto-populated from client defaults if empty.
+//
+// Possible errors:
+//   - VALIDATION: RequestId or ResponseTo is empty
+//   - TRANSIENT: temporary network issue (retryable)
+//   - TIMEOUT: operation exceeded ctx deadline
+//   - AUTHENTICATION: invalid or missing auth token
+//
+// See also: QueryReply, QueryReceive, SubscribeToQueries.
+func (c *Client) SendQueryResponse(ctx context.Context, response *QueryReply) error {
+	if err := c.checkClosed(); err != nil {
+		return err
+	}
+	if response.ClientId == "" {
+		response.ClientId = c.opts.clientId
+	}
+	if err := validateQueryReply(response); err != nil {
+		return err
+	}
+	req := &transport.SendResponseRequest{
+		RequestID:  response.RequestId,
+		ResponseTo: response.ResponseTo,
+		Metadata:   response.Metadata,
+		Body:       response.Body,
+		ClientID:   response.ClientId,
+		ExecutedAt: response.ExecutedAt,
+		Err:        response.Err,
+		Tags:       response.Tags,
+	}
+	return c.transport.SendResponse(ctx, req)
+}
+
+// NewQueryReply creates a new QueryReply pre-populated with client defaults.
+func (c *Client) NewQueryReply() *QueryReply {
+	return &QueryReply{
+		ClientId: c.opts.clientId,
+		Tags:     map[string]string{},
+	}
 }
 
 // NewQuery creates a new Query pre-populated with client defaults.

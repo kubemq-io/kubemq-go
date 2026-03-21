@@ -160,6 +160,43 @@ var (
 // SDK returns the canonical SDK label.
 func SDK() string { return sdkLabel }
 
+// InitMetrics pre-initializes all Prometheus metrics to 0 with well-known label
+// values. This prevents absent() alerts in dashboards on boot.
+func InitMetrics() {
+	patterns := []string{"events", "events_store", "queue_stream", "queue_simple", "commands", "queries"}
+	for _, p := range patterns {
+		MessagesSentTotal.WithLabelValues(sdkLabel, p, "p-"+p+"-000").Add(0)
+		MessagesReceivedTotal.WithLabelValues(sdkLabel, p, "c-"+p+"-000").Add(0)
+		MessagesLostTotal.WithLabelValues(sdkLabel, p).Add(0)
+		MessagesDuplicatedTotal.WithLabelValues(sdkLabel, p).Add(0)
+		MessagesCorruptedTotal.WithLabelValues(sdkLabel, p).Add(0)
+		MessagesOutOfOrderTotal.WithLabelValues(sdkLabel, p).Add(0)
+		MessagesUnconfirmedTotal.WithLabelValues(sdkLabel, p).Add(0)
+		ReconnectionDuplicatesTotal.WithLabelValues(sdkLabel, p).Add(0)
+		ErrorsTotal.WithLabelValues(sdkLabel, p, "send_failure").Add(0)
+		ReconnectionsTotal.WithLabelValues(sdkLabel, p).Add(0)
+		BytesSentTotal.WithLabelValues(sdkLabel, p).Add(0)
+		BytesReceivedTotal.WithLabelValues(sdkLabel, p).Add(0)
+		DowntimeSecondsTotal.WithLabelValues(sdkLabel, p).Add(0)
+		ActiveConnections.WithLabelValues(sdkLabel, p).Set(0)
+		TargetRate.WithLabelValues(sdkLabel, p).Set(0)
+		ActualRate.WithLabelValues(sdkLabel, p).Set(0)
+		ConsumerLag.WithLabelValues(sdkLabel, p).Set(0)
+		ConsumerGroupBalance.WithLabelValues(sdkLabel, p).Set(0)
+	}
+	for _, p := range patterns[:4] {
+		RPCResponsesTotal.WithLabelValues(sdkLabel, p, "success").Add(0)
+	}
+	for _, p := range patterns[4:] {
+		RPCResponsesTotal.WithLabelValues(sdkLabel, p, "success").Add(0)
+		RPCResponsesTotal.WithLabelValues(sdkLabel, p, "timeout").Add(0)
+		RPCResponsesTotal.WithLabelValues(sdkLabel, p, "error").Add(0)
+	}
+	UptimeSeconds.Set(0)
+	WarmupActive.Set(0)
+	ActiveWorkers.Set(0)
+}
+
 // IncSent increments the sent counter for a pattern/producer.
 func IncSent(pattern, producerID string) {
 	MessagesSentTotal.WithLabelValues(sdkLabel, pattern, producerID).Inc()
@@ -443,4 +480,62 @@ func (p *PeakRateTracker) Peak() float64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.peak
+}
+
+// SlidingRateWindow tracks message rate over a 30-second sliding window.
+// Call Advance() once per second to rotate buckets, and Record() per message.
+const slidingWindowSize = 30
+
+type SlidingRateWindow struct {
+	mu      sync.Mutex
+	buckets [slidingWindowSize]int64
+	idx     int
+	total   int64
+	ticks   int
+}
+
+func NewSlidingRateWindow() *SlidingRateWindow {
+	return &SlidingRateWindow{}
+}
+
+func (w *SlidingRateWindow) Record() {
+	w.mu.Lock()
+	w.buckets[w.idx]++
+	w.total++
+	w.mu.Unlock()
+}
+
+func (w *SlidingRateWindow) Advance() {
+	w.mu.Lock()
+	w.idx = (w.idx + 1) % slidingWindowSize
+	w.total -= w.buckets[w.idx]
+	w.buckets[w.idx] = 0
+	w.ticks++
+	w.mu.Unlock()
+}
+
+// Rate returns the average messages/sec over the sliding window.
+// Uses min(ticks, 30) as the divisor to avoid undercount during ramp-up.
+func (w *SlidingRateWindow) Rate() float64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	window := w.ticks
+	if window > slidingWindowSize {
+		window = slidingWindowSize
+	}
+	if window == 0 {
+		return 0
+	}
+	return float64(w.total) / float64(window)
+}
+
+func (w *SlidingRateWindow) Reset() {
+	w.mu.Lock()
+	for i := range w.buckets {
+		w.buckets[i] = 0
+	}
+	w.total = 0
+	w.idx = 0
+	w.ticks = 0
+	w.mu.Unlock()
 }

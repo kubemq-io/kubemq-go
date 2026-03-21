@@ -1,7 +1,7 @@
 // Example: queues-stream/ack-range
 //
-// Demonstrates selectively acknowledging specific messages by sequence
-// number using AckRange. This allows fine-grained control over which
+// Demonstrates selectively acknowledging specific messages using individual
+// message Ack/Nack methods. This allows fine-grained control over which
 // messages in a transaction are acknowledged.
 //
 // Channel: go-queues-stream.ack-range
@@ -60,62 +60,36 @@ func main() {
 	// Allow messages to be committed to the queue.
 	time.Sleep(time.Second)
 
-	// Receive messages via downstream.
-	downstream, err := client.QueueDownstream(ctx)
+	// Receive messages via downstream receiver.
+	receiver, err := client.NewQueueDownstreamReceiver(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer downstream.Close()
+	defer receiver.Close()
 
-	err = downstream.Send(&kubemq.QueueDownstreamRequest{
-		RequestID:   fmt.Sprintf("req-get-%d", time.Now().UnixNano()),
-		RequestType: kubemq.QueueDownstreamGet,
-		Channel:     channel,
-		MaxItems:    10,
-		WaitTimeout: 5000,
-		AutoAck:     false,
+	resp, err := receiver.Poll(ctx, &kubemq.PollRequest{
+		Channel:            channel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
+		AutoAck:            false,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	var txID string
-	var seqs []int64
-	timeout := time.After(10 * time.Second)
-	for {
-		select {
-		case msg, ok := <-downstream.Messages:
-			if !ok {
-				goto ack
-			}
-			if msg != nil {
-				txID = msg.TransactionID
-				if msg.Message != nil && msg.Message.Attributes != nil {
-					seqs = append(seqs, int64(msg.Message.Attributes.Sequence))
-				}
-				fmt.Printf("Received: body=%s seq=%d\n", msg.Message.Body,
-					func() uint64 {
-						if msg.Message.Attributes != nil {
-							return msg.Message.Attributes.Sequence
-						}
-						return 0
-					}())
-			}
-		case <-timeout:
-			goto ack
+	for _, dm := range resp.Messages {
+		if dm.Message != nil {
+			fmt.Printf("Received: body=%s seq=%d\n", dm.Message.Body, dm.Sequence)
 		}
 	}
 
-ack:
-	// Selectively ack only the first message's sequence.
-	if txID != "" && len(seqs) > 0 {
-		fmt.Printf("AckRange: acking sequence %v from tx=%s\n", seqs[:1], txID)
-		_ = downstream.Send(&kubemq.QueueDownstreamRequest{
-			RequestID:        "req-ack-range",
-			RequestType:      kubemq.QueueDownstreamAckRange,
-			RefTransactionID: txID,
-			SequenceRange:    seqs[:1],
-		})
+	// Selectively ack only the first message.
+	if len(resp.Messages) > 0 {
+		dm := resp.Messages[0]
+		fmt.Printf("Ack: acking sequence %d from tx=%s\n", dm.Sequence, dm.TransactionID)
+		if err := dm.Ack(); err != nil {
+			log.Printf("Ack failed: %v", err)
+		}
 		fmt.Println("Selective ack complete")
 	}
 }

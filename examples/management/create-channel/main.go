@@ -55,4 +55,26 @@ func main() {
 	} else {
 		fmt.Println("Created events store channel: go-management.create-channel.es")
 	}
+
+	// Typed convenience methods — no channel-type constant needed.
+	err = client.CreateEventsChannel(ctx, "go-management.typed.events")
+	if err != nil {
+		log.Println("CreateEventsChannel:", err)
+	} else {
+		fmt.Println("Created events channel (typed): go-management.typed.events")
+	}
+
+	err = client.CreateQueuesChannel(ctx, "go-management.typed.queues")
+	if err != nil {
+		log.Println("CreateQueuesChannel:", err)
+	} else {
+		fmt.Println("Created queues channel (typed): go-management.typed.queues")
+	}
+
+	err = client.CreateCommandsChannel(ctx, "go-management.typed.commands")
+	if err != nil {
+		log.Println("CreateCommandsChannel:", err)
+	} else {
+		fmt.Println("Created commands channel (typed): go-management.typed.commands")
+	}
 }

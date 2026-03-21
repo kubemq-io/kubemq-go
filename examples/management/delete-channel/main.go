@@ -48,4 +48,14 @@ func main() {
 	} else {
 		fmt.Printf("Deleted channel: %s\n", channelName)
 	}
+
+	// Typed convenience method — no channel-type constant needed.
+	typedName := "go-management.delete-channel.typed"
+	_ = client.CreateEventsChannel(ctx, typedName)
+	err = client.DeleteEventsChannel(ctx, typedName)
+	if err != nil {
+		log.Printf("DeleteEventsChannel: %v", err)
+	} else {
+		fmt.Printf("Deleted events channel (typed): %s\n", typedName)
+	}
 }

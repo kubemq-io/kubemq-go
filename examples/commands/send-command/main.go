@@ -41,12 +41,12 @@ func main() {
 		kubemq.WithOnCommandReceive(func(cmd *kubemq.CommandReceive) {
 			fmt.Printf("Command received: channel=%s body=%s\n", cmd.Channel, cmd.Body)
 			// Send a response indicating successful execution.
-			resp := kubemq.NewResponse().
+			resp := kubemq.NewCommandReply().
 				SetRequestId(cmd.Id).
 				SetResponseTo(cmd.ResponseTo).
 				SetBody([]byte("executed")).
 				SetExecutedAt(time.Now())
-			_ = client.SendResponse(ctx, resp)
+			_ = client.SendCommandResponse(ctx, resp)
 			close(done)
 		}),
 		kubemq.WithOnError(func(err error) {

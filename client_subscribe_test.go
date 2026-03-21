@@ -612,7 +612,7 @@ func TestSendEventStore_DefaultChannel(t *testing.T) {
 
 func TestSendQueueMessage_TransportError(t *testing.T) {
 	c, mt := newSubscribeTestClient(t)
-	mt.OnSendQueueMessage(func(_ context.Context, _ *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+	mt.OnSendQueueMessage(func(_ context.Context, _ *transport.QueueMessageItem) (*transport.QueueSendResultItem, error) {
 		return nil, fmt.Errorf("send queue message failed: connection refused")
 	})
 	msg := &QueueMessage{

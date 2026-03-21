@@ -6,6 +6,7 @@ import (
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/middleware"
 	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
+	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 	"github.com/kubemq-io/kubemq-go/v2/pkg/uuid"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -23,9 +24,9 @@ import (
 //     or Metadata must be set. An optional QueueMessage.Policy controls
 //     expiration, delay, and dead-letter routing.
 //
-// Returns a *SendQueueMessageResult containing the server-assigned message ID,
+// Returns a *QueueSendResult containing the server-assigned message ID,
 // send timestamp, and any computed expiration/delay times. Check
-// SendQueueMessageResult.IsError to detect server-side rejections (e.g., queue
+// QueueSendResult.IsError to detect server-side rejections (e.g., queue
 // does not exist).
 //
 // Possible errors:
@@ -36,9 +37,9 @@ import (
 //   - AUTHORIZATION: insufficient permissions for this channel
 //   - BACKPRESSURE: server or client buffer is full (retryable after backoff)
 //
-// See also: QueueMessage, SendQueueMessageResult, SendQueueMessages,
-// ReceiveQueueMessages.
-func (c *Client) SendQueueMessage(ctx context.Context, msg *QueueMessage) (*SendQueueMessageResult, error) {
+// See also: QueueMessage, QueueSendResult, SendQueueMessages,
+// PollQueue.
+func (c *Client) SendQueueMessage(ctx context.Context, msg *QueueMessage) (*QueueSendResult, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
 	}
@@ -85,7 +86,7 @@ func (c *Client) SendQueueMessage(ctx context.Context, msg *QueueMessage) (*Send
 	if err != nil {
 		return nil, err
 	}
-	return &SendQueueMessageResult{
+	return &QueueSendResult{
 		MessageID:    r.MessageID,
 		SentAt:       r.SentAt,
 		ExpirationAt: r.ExpirationAt,
@@ -97,7 +98,7 @@ func (c *Client) SendQueueMessage(ctx context.Context, msg *QueueMessage) (*Send
 
 // SendQueueMessages sends multiple messages to a queue in a batch.
 // Validates each message before sending.
-func (c *Client) SendQueueMessages(ctx context.Context, msgs []*QueueMessage) ([]*SendQueueMessageResult, error) {
+func (c *Client) SendQueueMessages(ctx context.Context, msgs []*QueueMessage) ([]*QueueSendResult, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
 	}
@@ -155,9 +156,9 @@ func (c *Client) SendQueueMessages(ctx context.Context, msgs []*QueueMessage) ([
 		return nil, err
 	}
 
-	out := make([]*SendQueueMessageResult, 0, len(result.Results))
+	out := make([]*QueueSendResult, 0, len(result.Results))
 	for _, r := range result.Results {
-		out = append(out, &SendQueueMessageResult{
+		out = append(out, &QueueSendResult{
 			MessageID:    r.MessageID,
 			SentAt:       r.SentAt,
 			ExpirationAt: r.ExpirationAt,
@@ -167,111 +168,6 @@ func (c *Client) SendQueueMessages(ctx context.Context, msgs []*QueueMessage) ([
 		})
 	}
 	return out, nil
-}
-
-// ReceiveQueueMessages receives messages from a queue using a pull-based model.
-// The call blocks (long-polls) until at least one message is available, the wait
-// timeout expires, or the context is cancelled.
-//
-// Parameters:
-//   - ctx: controls the overall deadline. If ctx expires before a response is
-//     received, a context.DeadlineExceeded error is returned.
-//   - req: receive configuration:
-//   - Channel: the queue channel to receive from (required, no wildcards).
-//   - MaxNumberOfMessages: maximum number of messages to return in one call.
-//     Must be > 0.
-//   - WaitTimeSeconds: how long the server waits (in seconds) for messages
-//     to become available before returning an empty response. Must be > 0.
-//   - IsPeak: if true, messages are peeked (not removed from the queue);
-//     if false, messages are dequeued.
-//   - ClientID: auto-populated from client defaults if empty.
-//   - RequestID: optional correlation ID.
-//
-// Returns a *ReceiveQueueMessagesResponse containing the received messages and
-// counts. Check ReceiveQueueMessagesResponse.IsError for server-side errors.
-// An empty Messages slice with IsError=false means the wait timeout elapsed
-// with no messages available.
-//
-// Possible errors:
-//   - VALIDATION: channel is empty, MaxNumberOfMessages <= 0, WaitTimeSeconds <= 0
-//   - TRANSIENT: temporary network issue (retryable)
-//   - TIMEOUT: operation exceeded ctx deadline
-//   - AUTHENTICATION: invalid or missing auth token
-//   - AUTHORIZATION: insufficient permissions for this channel
-//   - NOT_FOUND: queue channel does not exist
-//
-// See also: ReceiveQueueMessagesRequest, ReceiveQueueMessagesResponse,
-// QueueMessage, SendQueueMessage, PollQueue.
-func (c *Client) ReceiveQueueMessages(ctx context.Context, req *ReceiveQueueMessagesRequest) (*ReceiveQueueMessagesResponse, error) {
-	if err := c.checkClosed(); err != nil {
-		return nil, err
-	}
-	if req.ClientID == "" {
-		req.ClientID = c.opts.clientId
-	}
-	if req.Channel != "" {
-		if err := validateChannelStrict(req.Channel); err != nil {
-			return nil, err
-		}
-	}
-	if err := validateQueueReceive(req.MaxNumberOfMessages, req.WaitTimeSeconds); err != nil {
-		return nil, err
-	}
-	tReq := &transport.ReceiveQueueMessagesReq{
-		RequestID:           req.RequestID,
-		ClientID:            req.ClientID,
-		Channel:             req.Channel,
-		MaxNumberOfMessages: req.MaxNumberOfMessages,
-		WaitTimeSeconds:     req.WaitTimeSeconds,
-		IsPeak:              req.IsPeak,
-	}
-	result, err := c.transport.ReceiveQueueMessages(ctx, tReq)
-	if err != nil {
-		return nil, err
-	}
-
-	msgs := make([]*QueueMessage, 0, len(result.Messages))
-	for _, m := range result.Messages {
-		msg := &QueueMessage{
-			ID:       m.ID,
-			ClientID: m.ClientID,
-			Channel:  m.Channel,
-			Metadata: m.Metadata,
-			Body:     m.Body,
-			Tags:     m.Tags,
-		}
-		if m.Policy != nil {
-			msg.Policy = &QueuePolicy{
-				ExpirationSeconds: m.Policy.ExpirationSeconds,
-				DelaySeconds:      m.Policy.DelaySeconds,
-				MaxReceiveCount:   m.Policy.MaxReceiveCount,
-				MaxReceiveQueue:   m.Policy.MaxReceiveQueue,
-			}
-		}
-		if m.Attributes != nil {
-			msg.Attributes = &QueueMessageAttributes{
-				Timestamp:         m.Attributes.Timestamp,
-				Sequence:          m.Attributes.Sequence,
-				MD5OfBody:         m.Attributes.MD5OfBody,
-				ReceiveCount:      m.Attributes.ReceiveCount,
-				ReRouted:          m.Attributes.ReRouted,
-				ReRoutedFromQueue: m.Attributes.ReRoutedFromQueue,
-				ExpirationAt:      m.Attributes.ExpirationAt,
-				DelayedTo:         m.Attributes.DelayedTo,
-			}
-		}
-		msgs = append(msgs, msg)
-	}
-
-	return &ReceiveQueueMessagesResponse{
-		RequestID:        result.RequestID,
-		Messages:         msgs,
-		MessagesReceived: result.MessagesReceived,
-		MessagesExpired:  result.MessagesExpired,
-		IsPeak:           result.IsPeak,
-		IsError:          result.IsError,
-		Error:            result.Error,
-	}, nil
 }
 
 // AckAllQueueMessages acknowledges all messages in a queue.
@@ -317,13 +213,14 @@ func (c *Client) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error
 		return nil, err
 	}
 
-	pubResultCh := make(chan *QueueUpstreamResult, 16)
+	pubResultCh := make(chan *QueueUpstreamResult, 4096)
+	streamCtx := ctx
 	go func() {
 		for r := range handle.Results {
 			if r != nil {
-				results := make([]*SendQueueMessageResult, 0, len(r.Results))
+				results := make([]*QueueSendResult, 0, len(r.Results))
 				for _, ri := range r.Results {
-					results = append(results, &SendQueueMessageResult{
+					results = append(results, &QueueSendResult{
 						MessageID:    ri.MessageID,
 						SentAt:       ri.SentAt,
 						ExpirationAt: ri.ExpirationAt,
@@ -339,7 +236,8 @@ func (c *Client) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error
 					IsError:      r.IsError,
 					Error:        r.Error,
 				}:
-				default:
+				case <-streamCtx.Done():
+					return
 				}
 			}
 		}
@@ -385,108 +283,56 @@ func (c *Client) QueueUpstream(ctx context.Context) (*QueueUpstreamHandle, error
 	}, nil
 }
 
-// QueueDownstream opens a bidirectional stream for receiving and managing queue messages.
-// Returns a handle with Messages, Errors, Send, and Close.
-func (c *Client) QueueDownstream(ctx context.Context) (*QueueDownstreamHandle, error) {
+// NewQueueDownstreamReceiver creates a new QueueDownstreamReceiver for continuously
+// polling queue messages. The receiver manages a persistent downstream stream with
+// automatic reconnection support.
+//
+// Call Poll() in a loop to receive messages. Call Close() when done.
+func (c *Client) NewQueueDownstreamReceiver(ctx context.Context) (*QueueDownstreamReceiver, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
 	}
-	tHandle, err := c.transport.QueueDownstream(ctx, &transport.QueueDownstreamRequest{})
+
+	receiverCtx, receiverCancel := context.WithCancel(ctx)
+
+	stream, err := c.transport.QueueDownstream(receiverCtx)
 	if err != nil {
-		return nil, err
+		receiverCancel()
+		return nil, fmt.Errorf("kubemq: queue downstream: %w", err)
 	}
 
-	sendDownstream := func(req *QueueDownstreamRequest) error {
-		if req.RequestID == "" {
-			req.RequestID = uuid.New()
-		}
-		waitTimeout := req.WaitTimeout
-		if req.WaitTimeoutSeconds > 0 {
-			waitTimeout = req.WaitTimeoutSeconds * 1000
-		}
-		return tHandle.Send(&transport.QueueDownstreamSendRequest{
-			RequestID:        req.RequestID,
-			ClientID:         req.ClientID,
-			RequestType:      req.RequestType,
-			Channel:          req.Channel,
-			MaxItems:         req.MaxItems,
-			WaitTimeout:      waitTimeout,
-			AutoAck:          req.AutoAck,
-			ReQueueChannel:   req.ReQueueChannel,
-			SequenceRange:    req.SequenceRange,
-			RefTransactionID: req.RefTransactionID,
-			Metadata:         req.Metadata,
-		})
+	log := Logger(noopLogger{})
+	if c.opts.logger != nil {
+		log = c.opts.logger
 	}
 
-	msgCh := make(chan *QueueTransactionMessage, 16)
-	go func() {
-		for msg := range tHandle.Messages {
-			if r, ok := msg.(*transport.QueueDownstreamResult); ok {
-				msgs := make([]*QueueMessage, 0, len(r.Messages))
-				for _, m := range r.Messages {
-					qm := &QueueMessage{
-						ID:       m.ID,
-						ClientID: m.ClientID,
-						Channel:  m.Channel,
-						Metadata: m.Metadata,
-						Body:     m.Body,
-						Tags:     m.Tags,
-					}
-					if m.Policy != nil {
-						qm.Policy = &QueuePolicy{
-							ExpirationSeconds: m.Policy.ExpirationSeconds,
-							DelaySeconds:      m.Policy.DelaySeconds,
-							MaxReceiveCount:   m.Policy.MaxReceiveCount,
-							MaxReceiveQueue:   m.Policy.MaxReceiveQueue,
-						}
-					}
-					if m.Attributes != nil {
-						qm.Attributes = &QueueMessageAttributes{
-							Timestamp:         m.Attributes.Timestamp,
-							Sequence:          m.Attributes.Sequence,
-							MD5OfBody:         m.Attributes.MD5OfBody,
-							ReceiveCount:      m.Attributes.ReceiveCount,
-							ReRouted:          m.Attributes.ReRouted,
-							ReRoutedFromQueue: m.Attributes.ReRoutedFromQueue,
-							ExpirationAt:      m.Attributes.ExpirationAt,
-							DelayedTo:         m.Attributes.DelayedTo,
-						}
-					}
-					msgs = append(msgs, qm)
-				}
-				for _, qm := range msgs {
-					select {
-					case msgCh <- &QueueTransactionMessage{
-						Message:       qm,
-						TransactionID: r.TransactionID,
-						RefRequestID:  r.RefRequestID,
-						ActiveOffsets: r.ActiveOffsets,
-						Metadata:      r.Metadata,
-						sendFn:        sendDownstream,
-					}:
-					case <-ctx.Done():
-						close(msgCh)
-						return
-					}
-				}
-			}
-		}
-		close(msgCh)
-	}()
+	r := &QueueDownstreamReceiver{
+		transport:   c.transport,
+		clientID:    c.opts.clientId,
+		logger:      log,
+		ctx:         receiverCtx,
+		cancel:      receiverCancel,
+		stream:      stream,
+		sendCh:      make(chan *pb.QueuesDownstreamRequest, 4096),
+		responseCh:  make(chan *pb.QueuesDownstreamResponse, 1),
+		errCh:       make(chan error, 8),
+		stopCh:      make(chan struct{}),
+		reconnectCh: make(chan struct{}),
+		openTxns:    make(map[string]struct{}),
+		openStream: func() (pb.Kubemq_QueuesDownstreamClient, error) {
+			return c.transport.QueueDownstream(receiverCtx)
+		},
+	}
 
-	return &QueueDownstreamHandle{
-		Messages: msgCh,
-		Errors:   tHandle.Errors,
-		Send:     sendDownstream,
-		Close:    tHandle.Close,
-	}, nil
+	go r.recvLoop()
+
+	return r, nil
 }
 
-// PollQueue performs a single poll operation on a queue, returning messages.
-// This is a high-level abstraction that opens a downstream stream, sends a Get request,
-// reads the response, and closes the stream.
-func (c *Client) PollQueue(ctx context.Context, req *QueuePollRequest) (*QueuePollResponse, error) {
+// PollQueue performs a single auto-ack poll operation on a queue.
+// This is a convenience wrapper that creates a temporary receiver, polls once,
+// and closes the receiver. For continuous polling, use NewQueueDownstreamReceiver.
+func (c *Client) PollQueue(ctx context.Context, req *PollRequest) (*PollResponse, error) {
 	if err := c.checkClosed(); err != nil {
 		return nil, err
 	}
@@ -496,59 +342,14 @@ func (c *Client) PollQueue(ctx context.Context, req *QueuePollRequest) (*QueuePo
 		}
 	}
 
-	handle, err := c.QueueDownstream(ctx)
+	req.AutoAck = true
+	receiver, err := c.NewQueueDownstreamReceiver(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer handle.Close()
+	defer func() { _ = receiver.Close() }()
 
-	waitTimeout := req.WaitTimeout
-	if req.WaitTimeoutSeconds > 0 {
-		waitTimeout = req.WaitTimeoutSeconds * 1000
-	}
-
-	err = handle.Send(&QueueDownstreamRequest{
-		RequestID:   uuid.New(),
-		ClientID:    c.opts.clientId,
-		RequestType: QueueDownstreamGet,
-		Channel:     req.Channel,
-		MaxItems:    req.MaxItems,
-		WaitTimeout: waitTimeout,
-		AutoAck:     req.AutoAck,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("poll queue send: %w", err)
-	}
-
-	resp := &QueuePollResponse{}
-	select {
-	case msg, ok := <-handle.Messages:
-		if !ok {
-			return resp, nil
-		}
-		resp.TransactionID = msg.TransactionID
-		resp.Messages = append(resp.Messages, msg.Message)
-		for {
-			select {
-			case m, ok := <-handle.Messages:
-				if !ok {
-					return resp, nil
-				}
-				resp.Messages = append(resp.Messages, m.Message)
-			default:
-				return resp, nil
-			}
-		}
-	case err, ok := <-handle.Errors:
-		if !ok {
-			return resp, nil
-		}
-		resp.IsError = true
-		resp.Error = err.Error()
-		return resp, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	return receiver.Poll(ctx, req)
 }
 
 // NewQueueMessage creates a new QueueMessage pre-populated with client defaults.

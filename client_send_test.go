@@ -121,21 +121,42 @@ func TestSendQuery_Success(t *testing.T) {
 	assert.Equal(t, []byte("answer"), resp.Body)
 }
 
-func TestSendResponse_Success(t *testing.T) {
+func TestSendCommandResponse_Success(t *testing.T) {
 	c, mt := newSendTestClient(t)
 	mt.OnSendResponse(func(_ context.Context, req *transport.SendResponseRequest) error {
 		assert.Equal(t, "req-1", req.RequestID)
 		assert.Equal(t, "reply-to", req.ResponseTo)
 		return nil
 	})
-	err := c.SendResponse(context.Background(),
-		NewResponse().SetRequestId("req-1").SetResponseTo("reply-to"))
+	err := c.SendCommandResponse(context.Background(),
+		NewCommandReply().SetRequestId("req-1").SetResponseTo("reply-to"))
 	assert.NoError(t, err)
 }
 
-func TestSendResponse_ValidationError(t *testing.T) {
+func TestSendCommandResponse_ValidationError(t *testing.T) {
 	c, _ := newSendTestClient(t)
-	err := c.SendResponse(context.Background(), NewResponse())
+	err := c.SendCommandResponse(context.Background(), NewCommandReply())
+	require.Error(t, err)
+	var kErr *KubeMQError
+	require.True(t, errors.As(err, &kErr))
+	assert.Equal(t, ErrCodeValidation, kErr.Code)
+}
+
+func TestSendQueryResponse_Success(t *testing.T) {
+	c, mt := newSendTestClient(t)
+	mt.OnSendResponse(func(_ context.Context, req *transport.SendResponseRequest) error {
+		assert.Equal(t, "req-2", req.RequestID)
+		assert.Equal(t, "reply-to-2", req.ResponseTo)
+		return nil
+	})
+	err := c.SendQueryResponse(context.Background(),
+		NewQueryReply().SetRequestId("req-2").SetResponseTo("reply-to-2"))
+	assert.NoError(t, err)
+}
+
+func TestSendQueryResponse_ValidationError(t *testing.T) {
+	c, _ := newSendTestClient(t)
+	err := c.SendQueryResponse(context.Background(), NewQueryReply())
 	require.Error(t, err)
 	var kErr *KubeMQError
 	require.True(t, errors.As(err, &kErr))
@@ -144,9 +165,9 @@ func TestSendResponse_ValidationError(t *testing.T) {
 
 func TestSendQueueMessage_Success(t *testing.T) {
 	c, mt := newSendTestClient(t)
-	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.SendQueueMessageResultItem, error) {
+	mt.OnSendQueueMessage(func(_ context.Context, req *transport.QueueMessageItem) (*transport.QueueSendResultItem, error) {
 		assert.Equal(t, "q-ch", req.Channel)
-		return &transport.SendQueueMessageResultItem{MessageID: "msg-1", SentAt: 100}, nil
+		return &transport.QueueSendResultItem{MessageID: "msg-1", SentAt: 100}, nil
 	})
 	result, err := c.SendQueueMessage(context.Background(),
 		NewQueueMessage().SetChannel("q-ch").SetBody([]byte("payload")))
@@ -159,7 +180,7 @@ func TestSendQueueMessages_Success(t *testing.T) {
 	mt.OnSendQueueMessages(func(_ context.Context, req *transport.SendQueueMessagesRequest) (*transport.SendQueueMessagesResult, error) {
 		require.Len(t, req.Messages, 2)
 		return &transport.SendQueueMessagesResult{
-			Results: []*transport.SendQueueMessageResultItem{
+			Results: []*transport.QueueSendResultItem{
 				{MessageID: "msg-1"},
 				{MessageID: "msg-2"},
 			},
@@ -172,28 +193,6 @@ func TestSendQueueMessages_Success(t *testing.T) {
 	results, err := c.SendQueueMessages(context.Background(), msgs)
 	require.NoError(t, err)
 	require.Len(t, results, 2)
-}
-
-func TestReceiveQueueMessages_Success(t *testing.T) {
-	c, mt := newSendTestClient(t)
-	mt.OnReceiveQueueMessages(func(_ context.Context, req *transport.ReceiveQueueMessagesReq) (*transport.ReceiveQueueMessagesResp, error) {
-		assert.Equal(t, "q-ch", req.Channel)
-		return &transport.ReceiveQueueMessagesResp{
-			MessagesReceived: 1,
-			Messages: []*transport.QueueMessageItem{
-				{ID: "m-1", Channel: "q-ch", Body: []byte("data")},
-			},
-		}, nil
-	})
-	resp, err := c.ReceiveQueueMessages(context.Background(), &ReceiveQueueMessagesRequest{
-		Channel:             "q-ch",
-		MaxNumberOfMessages: 10,
-		WaitTimeSeconds:     5,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, int32(1), resp.MessagesReceived)
-	require.Len(t, resp.Messages, 1)
-	assert.Equal(t, "m-1", resp.Messages[0].ID)
 }
 
 func TestAckAllQueueMessages_Success(t *testing.T) {
@@ -245,10 +244,19 @@ func TestClient_NewCommand(t *testing.T) {
 	assert.NotNil(t, cmd.Tags)
 }
 
-func TestClient_NewResponse(t *testing.T) {
+func TestClient_NewCommandReply(t *testing.T) {
 	c, _ := newSendTestClient(t)
 	c.opts.clientId = "test-client"
-	resp := c.NewResponse()
+	resp := c.NewCommandReply()
+	assert.NotNil(t, resp)
+	assert.Equal(t, "test-client", resp.ClientId)
+	assert.NotNil(t, resp.Tags)
+}
+
+func TestClient_NewQueryReply(t *testing.T) {
+	c, _ := newSendTestClient(t)
+	c.opts.clientId = "test-client"
+	resp := c.NewQueryReply()
 	assert.NotNil(t, resp)
 	assert.Equal(t, "test-client", resp.ClientId)
 	assert.NotNil(t, resp.Tags)

@@ -21,7 +21,7 @@ import "fmt"
 //     is received (nil on outbound messages). Contains sequence number, timestamp,
 //     receive count, etc.
 //
-// See also: SendQueueMessage, ReceiveQueueMessages, QueuePolicy,
+// See also: SendQueueMessage, PollQueue, QueuePolicy,
 // QueueMessageAttributes.
 type QueueMessage struct {
 	ID         string
@@ -165,7 +165,7 @@ type QueuePolicy struct {
 
 // QueueMessageAttributes contains receive-side metadata populated by the server
 // when a message is dequeued. This struct is nil on outbound messages and only
-// present on messages returned by ReceiveQueueMessages or QueueDownstream.
+// present on messages returned by PollQueue or QueueDownstream.
 //
 // Fields:
 //   - Timestamp: Unix timestamp (nanoseconds) when the message was originally
@@ -183,7 +183,7 @@ type QueuePolicy struct {
 //   - DelayedTo: Unix timestamp (nanoseconds) until which the message was
 //     delayed. Zero if no delay policy is set.
 //
-// See also: QueueMessage, ReceiveQueueMessages.
+// See also: QueueMessage, PollQueue.
 type QueueMessageAttributes struct {
 	Timestamp         int64
 	Sequence          uint64
@@ -206,7 +206,7 @@ func (qms *QueueMessages) Add(msg *QueueMessage) *QueueMessages {
 	return qms
 }
 
-// SendQueueMessageResult contains the result of a single queue message send.
+// QueueSendResult contains the result of a single queue message send.
 // Immutable after construction. Safe to read from multiple goroutines.
 //
 // Fields:
@@ -221,62 +221,13 @@ func (qms *QueueMessages) Add(msg *QueueMessage) *QueueMessages {
 //   - Error: human-readable error message. Empty when IsError is false.
 //
 // See also: SendQueueMessage, SendQueueMessages, QueueMessage.
-type SendQueueMessageResult struct {
+type QueueSendResult struct {
 	MessageID    string
 	SentAt       int64
 	ExpirationAt int64
 	DelayedTo    int64
 	IsError      bool
 	Error        string
-}
-
-// ReceiveQueueMessagesRequest defines parameters for receiving queue messages.
-//
-// Fields:
-//   - RequestID: optional correlation ID for tracing. Auto-generated if empty.
-//   - ClientID: consumer identifier. Auto-populated from client defaults if empty.
-//   - Channel: the queue channel to receive from (required, no wildcards).
-//   - MaxNumberOfMessages: maximum number of messages to return. Must be > 0.
-//   - WaitTimeSeconds: how long the server long-polls (in seconds) for messages
-//     to become available. Must be > 0. If no messages arrive within this
-//     duration, an empty response is returned (not an error).
-//   - IsPeak: if true, messages are peeked but not removed from the queue.
-//     Peeked messages remain available for subsequent receive calls.
-//
-// See also: ReceiveQueueMessages, ReceiveQueueMessagesResponse.
-type ReceiveQueueMessagesRequest struct {
-	RequestID           string
-	ClientID            string
-	Channel             string
-	MaxNumberOfMessages int32
-	WaitTimeSeconds     int32
-	IsPeak              bool
-}
-
-// ReceiveQueueMessagesResponse contains the results of a receive operation.
-//
-// Fields:
-//   - RequestID: echoed from ReceiveQueueMessagesRequest.RequestID.
-//   - Messages: the received queue messages. Each message includes Attributes
-//     with server-side metadata (sequence, timestamp, receive count, etc.).
-//     May be empty if the wait timeout elapsed with no messages available.
-//   - MessagesReceived: total count of messages returned in this response.
-//   - MessagesExpired: count of messages that expired during the wait period
-//     (informational).
-//   - IsPeak: echoes the IsPeak flag from the request.
-//   - IsError: true if the server encountered an error during the receive
-//     operation (e.g., channel does not exist).
-//   - Error: human-readable error message. Empty when IsError is false.
-//
-// See also: ReceiveQueueMessages, ReceiveQueueMessagesRequest, QueueMessage.
-type ReceiveQueueMessagesResponse struct {
-	RequestID        string
-	Messages         []*QueueMessage
-	MessagesReceived int32
-	MessagesExpired  int32
-	IsPeak           bool
-	IsError          bool
-	Error            string
 }
 
 // AckAllQueueMessagesRequest defines parameters for acknowledging all queue messages.

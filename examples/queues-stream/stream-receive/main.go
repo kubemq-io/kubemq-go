@@ -1,7 +1,7 @@
 // Example: queues-stream/stream-receive
 //
-// Demonstrates receiving queue messages using QueueDownstream.
-// The downstream stream allows receiving messages with transaction control.
+// Demonstrates receiving queue messages using NewQueueDownstreamReceiver + Poll.
+// The receiver manages a persistent downstream stream with automatic reconnection.
 //
 // Channel: go-queues-stream.stream-receive
 // Client ID: go-queues-stream-stream-receive-client
@@ -46,55 +46,35 @@ func main() {
 	// Allow message to be committed to the queue.
 	time.Sleep(time.Second)
 
-	// Open a downstream stream to receive messages.
-	downstream, err := client.QueueDownstream(ctx)
+	// Open a downstream receiver.
+	receiver, err := client.NewQueueDownstreamReceiver(ctx)
 	if err != nil {
-		log.Fatalf("QueueDownstream: %v", err)
+		log.Fatalf("NewQueueDownstreamReceiver: %v", err)
 	}
-	defer downstream.Close()
+	defer receiver.Close()
 
-	// Send a Get request to pull messages.
-	err = downstream.Send(&kubemq.QueueDownstreamRequest{
-		RequestID:   fmt.Sprintf("req-%d", time.Now().UnixNano()),
-		ClientID:    "go-queues-stream-stream-receive-client",
-		RequestType: kubemq.QueueDownstreamGet,
-		Channel:     channel,
-		MaxItems:    10,
-		WaitTimeout: 5000,
-		AutoAck:     false,
+	// Poll for messages (manual ack).
+	resp, err := receiver.Poll(ctx, &kubemq.PollRequest{
+		Channel:            channel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
+		AutoAck:            false,
 	})
 	if err != nil {
-		log.Fatalf("Downstream Send: %v", err)
+		log.Fatalf("Poll: %v", err)
 	}
 
-	// Read received messages.
-	var txID string
-	timeout := time.After(10 * time.Second)
-	for {
-		select {
-		case msg, ok := <-downstream.Messages:
-			if !ok {
-				goto done
-			}
-			if msg != nil && msg.Message != nil {
-				txID = msg.TransactionID
-				fmt.Printf("Received: body=%s tx=%s\n", msg.Message.Body, msg.TransactionID)
-			}
-		case <-timeout:
-			goto done
-		case <-ctx.Done():
-			goto done
+	for _, dm := range resp.Messages {
+		if dm.Message != nil {
+			fmt.Printf("Received: body=%s tx=%s\n", dm.Message.Body, dm.TransactionID)
 		}
 	}
 
-done:
 	// Ack all received messages.
-	if txID != "" {
-		_ = downstream.Send(&kubemq.QueueDownstreamRequest{
-			RequestID:        fmt.Sprintf("req-ack-%d", time.Now().UnixNano()),
-			RequestType:      kubemq.QueueDownstreamAckAll,
-			RefTransactionID: txID,
-		})
+	if len(resp.Messages) > 0 {
+		if err := resp.AckAll(); err != nil {
+			log.Printf("AckAll: %v", err)
+		}
 		fmt.Println("Messages acknowledged")
 	}
 }

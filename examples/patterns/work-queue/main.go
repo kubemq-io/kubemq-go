@@ -53,12 +53,12 @@ func main() {
 		}
 	}
 
-	// Worker: consume and process work items.
-	resp, err := client.ReceiveQueueMessages(ctx, &kubemq.ReceiveQueueMessagesRequest{
-		Channel:             channel,
-		MaxNumberOfMessages: 10,
-		WaitTimeSeconds:     5,
-		IsPeak:              false,
+	// Worker: consume and process work items via PollQueue.
+	resp, err := client.PollQueue(ctx, &kubemq.PollRequest{
+		Channel:            channel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
+		AutoAck:            true,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -67,8 +67,8 @@ func main() {
 		log.Fatalf("Receive failed: %s", resp.Error)
 	}
 
-	fmt.Printf("\nWorker processed %d tasks:\n", resp.MessagesReceived)
-	for _, m := range resp.Messages {
-		fmt.Printf("  - body=%s metadata=%s\n", m.Body, m.Metadata)
+	fmt.Printf("\nWorker processed %d tasks:\n", len(resp.Messages))
+	for _, dsMsg := range resp.Messages {
+		fmt.Printf("  - body=%s metadata=%s\n", dsMsg.Message.Body, dsMsg.Message.Metadata)
 	}
 }

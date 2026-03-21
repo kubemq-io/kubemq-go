@@ -211,7 +211,7 @@ func (t *Tracker) advanceContiguous(ps *producerState) {
 }
 
 func (t *Tracker) slideWindow(ps *producerState, newSeq uint64) {
-	newHigh := newSeq - uint64(t.reorderWindow)
+	newHigh := newSeq - uint64(t.reorderWindow) - 1
 	if newHigh <= ps.highContiguous {
 		// Just set the bit
 		offset := newSeq - ps.highContiguous - 1
@@ -267,13 +267,11 @@ func getBit(window []uint64, pos int) bool {
 }
 
 func shiftLeft(window []uint64) {
-	carry := false
-	for i := len(window) - 1; i >= 0; i-- {
-		newCarry := window[i]&(1<<63) != 0
-		window[i] <<= 1
-		if carry {
-			window[i] |= 1
+	for i := 0; i < len(window); i++ {
+		window[i] >>= 1
+		if i+1 < len(window) {
+			// Carry LSB of next word into MSB of current word
+			window[i] |= (window[i+1] & 1) << 63
 		}
-		carry = newCarry
 	}
 }

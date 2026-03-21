@@ -40,7 +40,6 @@ func NewTestServer(t *testing.T) *TestServer {
 		sendResponseFn:           defaultSendResponse,
 		sendQueueMessageFn:       defaultSendQueueMessage,
 		sendQueueMessagesBatchFn: defaultSendQueueMessagesBatch,
-		receiveQueueMessagesFn:   defaultReceiveQueueMessages,
 		ackAllQueueMessagesFn:    defaultAckAllQueueMessages,
 		pingFn:                   defaultPing,
 	}
@@ -126,13 +125,6 @@ func (ts *TestServer) SetSendQueueMessagesBatchHandler(fn func(ctx context.Conte
 	ts.impl.sendQueueMessagesBatchFn = fn
 }
 
-// SetReceiveQueueMessagesHandler overrides the server's ReceiveQueueMessages behavior.
-func (ts *TestServer) SetReceiveQueueMessagesHandler(fn func(ctx context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error)) {
-	ts.impl.mu.Lock()
-	defer ts.impl.mu.Unlock()
-	ts.impl.receiveQueueMessagesFn = fn
-}
-
 // SetAckAllQueueMessagesHandler overrides the server's AckAllQueueMessages behavior.
 func (ts *TestServer) SetAckAllQueueMessagesHandler(fn func(ctx context.Context, req *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error)) {
 	ts.impl.mu.Lock()
@@ -156,9 +148,6 @@ func (ts *TestServer) FailWith(code codes.Code, msg string) {
 		return nil, err
 	})
 	ts.SetSendQueueMessagesBatchHandler(func(_ context.Context, _ *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error) {
-		return nil, err
-	})
-	ts.SetReceiveQueueMessagesHandler(func(_ context.Context, _ *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
 		return nil, err
 	})
 	ts.SetAckAllQueueMessagesHandler(func(_ context.Context, _ *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error) {
@@ -197,7 +186,6 @@ type mockKubemqService struct {
 	sendResponseFn           func(context.Context, *pb.Response) (*pb.Empty, error)
 	sendQueueMessageFn       func(context.Context, *pb.QueueMessage) (*pb.SendQueueMessageResult, error)
 	sendQueueMessagesBatchFn func(context.Context, *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error)
-	receiveQueueMessagesFn   func(context.Context, *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error)
 	ackAllQueueMessagesFn    func(context.Context, *pb.AckAllQueueMessagesRequest) (*pb.AckAllQueueMessagesResponse, error)
 	pingFn                   func(context.Context, *pb.Empty) (*pb.PingResult, error)
 
@@ -257,13 +245,6 @@ func (s *mockKubemqService) SendQueueMessage(ctx context.Context, msg *pb.QueueM
 func (s *mockKubemqService) SendQueueMessagesBatch(ctx context.Context, req *pb.QueueMessagesBatchRequest) (*pb.QueueMessagesBatchResponse, error) {
 	s.mu.Lock()
 	fn := s.sendQueueMessagesBatchFn
-	s.mu.Unlock()
-	return fn(ctx, req)
-}
-
-func (s *mockKubemqService) ReceiveQueueMessages(ctx context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
-	s.mu.Lock()
-	fn := s.receiveQueueMessagesFn
 	s.mu.Unlock()
 	return fn(ctx, req)
 }
@@ -332,17 +313,6 @@ func defaultSendQueueMessagesBatch(_ context.Context, req *pb.QueueMessagesBatch
 		BatchID:    req.BatchID,
 		Results:    results,
 		HaveErrors: false,
-	}, nil
-}
-
-func defaultReceiveQueueMessages(_ context.Context, req *pb.ReceiveQueueMessagesRequest) (*pb.ReceiveQueueMessagesResponse, error) {
-	return &pb.ReceiveQueueMessagesResponse{
-		RequestID:        req.RequestID,
-		Messages:         nil,
-		MessagesReceived: 0,
-		MessagesExpired:  0,
-		IsPeak:           req.IsPeak,
-		IsError:          false,
 	}, nil
 }
 

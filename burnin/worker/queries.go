@@ -16,32 +16,32 @@ import (
 // QueriesWorker implements the Worker interface for the Queries (RPC request/response with data) pattern.
 type QueriesWorker struct {
 	*BaseWorker
+	sendersPerChannel    int
+	respondersPerChannel int
 }
 
-// NewQueriesWorker creates a new queries pattern worker.
-func NewQueriesWorker(cfg *config.Config, cp *ClientProvider, logger *slog.Logger) *QueriesWorker {
-	bw := NewBaseWorker(PatternQueries, cfg, cp, logger)
+// NewQueriesWorker creates a new queries pattern worker for a specific channel.
+func NewQueriesWorker(cfg *config.Config, cp *ClientProvider, logger *slog.Logger,
+	channelName string, channelIndex int, pc *config.PatternConfig,
+	patternLatAccum *metrics.LatencyAccumulator) *QueriesWorker {
+
+	bw := NewBaseWorker(PatternQueries, cfg, cp, logger, channelName, channelIndex, pc.Rate, patternLatAccum)
 	bw.channelType = "queries"
 	return &QueriesWorker{
-		BaseWorker: bw,
+		BaseWorker:           bw,
+		sendersPerChannel:    pc.SendersPerChannel,
+		respondersPerChannel: pc.RespondersPerChannel,
 	}
 }
 
-// Start launches responders and senders for queries.
+// Start launches responders for queries on this channel.
 func (w *QueriesWorker) Start(ctx context.Context) error {
 	ctx, w.cancel = context.WithCancel(ctx)
 	w.producerCtx, w.producerCancel = context.WithCancel(ctx)
-	cfg := w.Config()
-
-	// Create channel
-	if err := w.CreateChannel(ctx, "queries"); err != nil {
-		w.Logger().Error("failed to create queries channel", "error", err)
-		return fmt.Errorf("create queries channel: %w", err)
-	}
 
 	// Start responders first so they are ready to handle queries
-	for i := 0; i < cfg.Concurrency.QueriesResponders; i++ {
-		responderID := fmt.Sprintf("c-%s-%03d", PatternQueries, i)
+	for i := 0; i < w.respondersPerChannel; i++ {
+		responderID := ResponderID(PatternQueries, w.channelIdx, i)
 		if err := w.startResponder(ctx, responderID); err != nil {
 			return fmt.Errorf("start queries responder %s: %w", responderID, err)
 		}
@@ -50,32 +50,35 @@ func (w *QueriesWorker) Start(ctx context.Context) error {
 	// Mark consumers ready
 	w.MarkConsumerReady()
 
-	// Start senders
-	for i := 0; i < cfg.Concurrency.QueriesSenders; i++ {
-		senderID := fmt.Sprintf("p-%s-%03d", PatternQueries, i)
+	return nil
+}
+
+// StartProducers launches sender goroutines. Called after warmup.
+func (w *QueriesWorker) StartProducers() {
+	for i := 0; i < w.sendersPerChannel; i++ {
+		senderID := SenderID(PatternQueries, w.channelIdx, i)
 		w.startSender(w.producerCtx, senderID)
 	}
-
-	return nil
 }
 
 // startResponder subscribes to queries and sends responses with the echoed body.
 func (w *QueriesWorker) startResponder(ctx context.Context, responderID string) error {
+	ws := w.getOrCreateConsumerStat(responderID)
+
 	sub, err := w.Client().SubscribeToQueries(ctx, w.ChannelName(), "",
 		kubemq.WithOnQueryReceive(func(query *kubemq.QueryReceive) {
-			// Skip warmup messages
 			if query.Tags != nil && query.Tags["warmup"] == "true" {
-				_ = w.Client().SendResponse(ctx, &kubemq.Response{
+				_ = w.Client().SendQueryResponse(ctx, &kubemq.QueryReply{
 					RequestId: query.Id, ResponseTo: query.ResponseTo, Body: query.Body, ExecutedAt: time.Now(),
 				})
 				return
 			}
 
-			// Verify CRC of the received body
 			msg, decErr := payload.Decode(query.Body)
 			if decErr != nil {
 				w.Logger().Error("failed to decode query", "responder", responderID, "error", decErr)
 				w.RecordError("decode_failure")
+				ws.errors.Add(1)
 				return
 			}
 
@@ -85,8 +88,7 @@ func (w *QueriesWorker) startResponder(ctx context.Context, responderID string) 
 				w.Logger().Error("CRC mismatch in query", "responder", responderID, "producer", msg.ProducerID, "seq", msg.Sequence)
 			}
 
-			// Send response back, echoing the body
-			resp := &kubemq.Response{
+			resp := &kubemq.QueryReply{
 				RequestId:  query.Id,
 				ResponseTo: query.ResponseTo,
 				Metadata:   "",
@@ -96,21 +98,24 @@ func (w *QueriesWorker) startResponder(ctx context.Context, responderID string) 
 				Tags:       query.Tags,
 			}
 
-			if sendErr := w.Client().SendResponse(ctx, resp); sendErr != nil {
+			if sendErr := w.Client().SendQueryResponse(ctx, resp); sendErr != nil {
 				w.Logger().Error("failed to send query response", "responder", responderID, "error", sendErr)
 				w.RecordError("response_send_failure")
+				ws.errors.Add(1)
+			} else {
+				ws.responded.Add(1)
 			}
 		}),
 		kubemq.WithOnError(func(err error) {
 			w.Logger().Error("responder subscription error", "responder", responderID, "error", err)
 			w.RecordError("subscription_error")
+			ws.errors.Add(1)
 		}),
 	)
 	if err != nil {
 		return fmt.Errorf("subscribe to queries: %w", err)
 	}
 
-	// Monitor subscription in a goroutine
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
@@ -134,6 +139,7 @@ func (w *QueriesWorker) startSender(ctx context.Context, senderID string) {
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
+		ws := w.getOrCreateProducerStat(senderID)
 
 		for {
 			select {
@@ -177,25 +183,39 @@ func (w *QueriesWorker) startSender(ctx context.Context, senderID string) {
 				metrics.IncRPCResponse(w.Pattern(), "error")
 				w.IncRPCError()
 				w.RecordError("send_failure")
-				w.Logger().Error("failed to send query", "sender", senderID, "seq", currentSeq, "error", err)
+				ws.errors.Add(1)
+				ws.rpcError.Add(1)
+				// Backoff on send errors to avoid retry-throttle cascade
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(200 * time.Millisecond):
+				}
 				continue
 			}
 
-			// Transport succeeded - count as sent
-			metrics.AddBytesSent(w.Pattern(), float64(len(body)))
+			w.RecordBytesSent(senderID, len(body))
 			w.sent.Add(1)
 			metrics.IncSent(w.Pattern(), senderID)
+			w.peakRate.Record()
+			w.rateWindow.Record()
+			ws.sent.Add(1)
+			ws.rateWindow.Record()
 
 			if resp.Error != "" {
 				if resp.Error == "timeout" || resp.Error == "rpc timeout" {
 					metrics.IncRPCResponse(w.Pattern(), "timeout")
 					w.IncRPCTimeout()
 					w.RecordError("timeout")
+					ws.rpcTimeout.Add(1)
+					ws.errors.Add(1)
 					w.Logger().Warn("query timed out", "sender", senderID, "seq", currentSeq)
 				} else {
 					metrics.IncRPCResponse(w.Pattern(), "error")
 					w.IncRPCError()
 					w.RecordError("rpc_error")
+					ws.rpcError.Add(1)
+					ws.errors.Add(1)
 					w.Logger().Error("query error response", "sender", senderID, "seq", currentSeq, "error", resp.Error)
 				}
 				continue
@@ -207,7 +227,6 @@ func (w *QueriesWorker) startSender(ctx context.Context, senderID string) {
 				w.received.Add(1)
 				metrics.IncReceived(w.Pattern(), senderID)
 
-				// Verify CRC of the echoed response body
 				if !payload.VerifyCRC(resp.Body, resp.Tags["content_hash"]) {
 					w.corrupted.Add(1)
 					metrics.IncCorrupted(w.Pattern())
@@ -215,11 +234,17 @@ func (w *QueriesWorker) startSender(ctx context.Context, senderID string) {
 				}
 
 				metrics.AddBytesReceived(w.Pattern(), float64(len(resp.Body)))
+				w.bytesReceived.Add(uint64(len(resp.Body)))
 				metrics.ObserveLatency(w.Pattern(), elapsed)
 				w.latAccum.Record(elapsed)
+				// Dual-write to pattern-level accumulator
+				if w.patternLatAccum != nil {
+					w.patternLatAccum.Record(elapsed)
+				}
 				w.RPCLatencyAccumulator().Record(elapsed)
+				ws.rpcSuccess.Add(1)
+				ws.latAccum.Record(elapsed)
 
-				// Record sequence for tracking
 				isDup, isOOO := w.trk.Record(senderID, currentSeq)
 				if isDup {
 					metrics.IncDuplicated(w.Pattern())
@@ -231,6 +256,8 @@ func (w *QueriesWorker) startSender(ctx context.Context, senderID string) {
 				metrics.IncRPCResponse(w.Pattern(), "error")
 				w.IncRPCError()
 				w.RecordError("not_executed")
+				ws.rpcError.Add(1)
+				ws.errors.Add(1)
 				w.Logger().Warn("query not executed", "sender", senderID, "seq", currentSeq)
 			}
 		}

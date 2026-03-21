@@ -106,12 +106,12 @@ func (c *Command) Validate() error {
 //   - Channel: the channel this command was published to.
 //   - Metadata: string metadata from the sender.
 //   - Body: binary payload from the sender.
-//   - ResponseTo: internal routing address used by SendResponse to deliver the
-//     reply back to the sender. Pass this value to Response.ResponseTo.
+//   - ResponseTo: internal routing address used by SendCommandResponse to deliver the
+//     reply back to the sender. Pass this value to CommandReply.ResponseTo.
 //   - Tags: key-value pairs from the sender.
 //   - Span: OpenTelemetry span context for distributed tracing.
 //
-// See also: SubscribeToCommands, SendResponse, Response.
+// See also: SubscribeToCommands, SendCommandResponse, CommandReply.
 type CommandReceive struct {
 	Id         string
 	ClientId   string

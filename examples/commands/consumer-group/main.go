@@ -41,11 +41,11 @@ func main() {
 	sub, err := client.SubscribeToCommands(ctx, channel, group,
 		kubemq.WithOnCommandReceive(func(cmd *kubemq.CommandReceive) {
 			fmt.Printf("Worker received: body=%s\n", cmd.Body)
-			resp := kubemq.NewResponse().
+			resp := kubemq.NewCommandReply().
 				SetRequestId(cmd.Id).
 				SetResponseTo(cmd.ResponseTo).
 				SetExecutedAt(time.Now())
-			_ = client.SendResponse(ctx, resp)
+			_ = client.SendCommandResponse(ctx, resp)
 			close(done)
 		}),
 		kubemq.WithOnError(func(err error) {

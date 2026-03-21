@@ -43,11 +43,11 @@ func main() {
 
 			// Process the command (business logic goes here).
 			// Then send back a response.
-			resp := kubemq.NewResponse().
+			resp := kubemq.NewCommandReply().
 				SetRequestId(cmd.Id).
 				SetResponseTo(cmd.ResponseTo).
 				SetExecutedAt(time.Now())
-			if err := client.SendResponse(ctx, resp); err != nil {
+			if err := client.SendCommandResponse(ctx, resp); err != nil {
 				log.Printf("Failed to send response: %v", err)
 			}
 			close(done)

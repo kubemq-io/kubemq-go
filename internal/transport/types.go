@@ -158,8 +158,8 @@ type SendQueueMessagesRequest struct {
 	Messages []*QueueMessageItem
 }
 
-// SendQueueMessageResultItem is the internal result for a single queue message send.
-type SendQueueMessageResultItem struct {
+// QueueSendResultItem is the internal result for a single queue message send.
+type QueueSendResultItem struct {
 	MessageID    string
 	SentAt       int64
 	ExpirationAt int64
@@ -170,28 +170,7 @@ type SendQueueMessageResultItem struct {
 
 // SendQueueMessagesResult is the internal result for batch queue message sends.
 type SendQueueMessagesResult struct {
-	Results []*SendQueueMessageResultItem
-}
-
-// ReceiveQueueMessagesReq is the internal request for receiving queue messages.
-type ReceiveQueueMessagesReq struct {
-	RequestID           string
-	ClientID            string
-	Channel             string
-	MaxNumberOfMessages int32
-	WaitTimeSeconds     int32
-	IsPeak              bool
-}
-
-// ReceiveQueueMessagesResp is the internal response for receiving queue messages.
-type ReceiveQueueMessagesResp struct {
-	RequestID        string
-	Messages         []*QueueMessageItem
-	MessagesReceived int32
-	MessagesExpired  int32
-	IsPeak           bool
-	IsError          bool
-	Error            string
+	Results []*QueueSendResultItem
 }
 
 // AckAllQueueMessagesReq is the internal request for acknowledging all queue messages.
@@ -217,15 +196,6 @@ type SubscribeRequest struct {
 	ClientID          string
 	SubscriptionType  int32
 	SubscriptionValue int64
-}
-
-// QueueDownstreamRequest is the internal request for queue downstream (receive) streams.
-type QueueDownstreamRequest struct {
-	ClientID    string
-	Channel     string
-	MaxItems    int32
-	WaitTimeout int32
-	AutoAck     bool
 }
 
 // CreateChannelRequest is the internal request for creating a channel.
@@ -317,36 +287,9 @@ type QueryReceiveItem struct {
 // QueueUpstreamResult is the internal representation of an upstream response.
 type QueueUpstreamResult struct {
 	RefRequestID string
-	Results      []*SendQueueMessageResultItem
+	Results      []*QueueSendResultItem
 	IsError      bool
 	Error        string
-}
-
-// QueueDownstreamSendRequest is the internal request sent on a downstream stream.
-type QueueDownstreamSendRequest struct {
-	RequestID        string
-	ClientID         string
-	RequestType      int32
-	Channel          string
-	MaxItems         int32
-	WaitTimeout      int32
-	AutoAck          bool
-	ReQueueChannel   string
-	SequenceRange    []int64
-	RefTransactionID string
-	Metadata         map[string]string
-}
-
-// QueueDownstreamResult is the internal representation of a downstream response.
-type QueueDownstreamResult struct {
-	TransactionID       string
-	RefRequestID        string
-	Messages            []*QueueMessageItem
-	ActiveOffsets       []int64
-	IsError             bool
-	Error               string
-	TransactionComplete bool
-	Metadata            map[string]string
 }
 
 // Config holds configuration for creating a transport connection.

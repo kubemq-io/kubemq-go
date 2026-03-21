@@ -1,11 +1,10 @@
 package payload
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"math/big"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -112,8 +111,7 @@ func ParseDistribution(s string) (*SizeDistribution, error) {
 
 // SelectSize returns a size based on the weighted distribution.
 func (d *SizeDistribution) SelectSize() int {
-	n, _ := rand.Int(rand.Reader, big.NewInt(int64(d.total)))
-	r := int(n.Int64())
+	r := rand.IntN(d.total)
 	cumulative := 0
 	for i, w := range d.weights {
 		cumulative += w
@@ -130,10 +128,17 @@ func randomPadding(n int) string {
 		return ""
 	}
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	for i := range b {
-		// Map to printable ASCII range [33, 126]
-		b[i] = 33 + (b[i] % 94)
+	// Fill with random bytes using math/rand, then map to printable ASCII.
+	// Use Uint32 to generate 4 bytes at a time, mapping each byte
+	// to the printable range via masking (faster than modulo).
+	for i := 0; i < n; {
+		v := rand.Uint32()
+		for j := 0; j < 4 && i < n; j++ {
+			// Map byte to [33, 126] — 94 values in printable ASCII
+			b[i] = 33 + byte(v&0x7F)%94
+			v >>= 8
+			i++
+		}
 	}
 	return string(b)
 }

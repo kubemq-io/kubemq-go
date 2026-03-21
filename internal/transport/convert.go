@@ -223,38 +223,18 @@ func ServerInfoFromProto(r *pb.PingResult) *ServerInfoResult {
 	}
 }
 
-// SendQueueMessageResultFromProto converts a protobuf SendQueueMessageResult.
-func SendQueueMessageResultFromProto(r *pb.SendQueueMessageResult) *SendQueueMessageResultItem {
+// QueueSendResultFromProto converts a protobuf SendQueueMessageResult to QueueSendResultItem.
+func QueueSendResultFromProto(r *pb.SendQueueMessageResult) *QueueSendResultItem {
 	if r == nil {
 		return nil
 	}
-	return &SendQueueMessageResultItem{
+	return &QueueSendResultItem{
 		MessageID:    r.MessageID,
 		SentAt:       r.SentAt,
 		ExpirationAt: r.ExpirationAt,
 		DelayedTo:    r.DelayedTo,
 		IsError:      r.IsError,
 		Error:        r.Error,
-	}
-}
-
-// ReceiveQueueMessagesRespFromProto converts a protobuf ReceiveQueueMessagesResponse.
-func ReceiveQueueMessagesRespFromProto(r *pb.ReceiveQueueMessagesResponse) *ReceiveQueueMessagesResp {
-	if r == nil {
-		return nil
-	}
-	msgs := make([]*QueueMessageItem, 0, len(r.Messages))
-	for _, m := range r.Messages {
-		msgs = append(msgs, QueueMessageFromProto(m))
-	}
-	return &ReceiveQueueMessagesResp{
-		RequestID:        r.RequestID,
-		Messages:         msgs,
-		MessagesReceived: r.MessagesReceived,
-		MessagesExpired:  r.MessagesExpired,
-		IsPeak:           r.IsPeak,
-		IsError:          r.IsError,
-		Error:            r.Error,
 	}
 }
 
@@ -348,9 +328,9 @@ func QueueUpstreamResponseFromProto(r *pb.QueuesUpstreamResponse) *QueueUpstream
 	if r == nil {
 		return nil
 	}
-	results := make([]*SendQueueMessageResultItem, 0, len(r.Results))
+	results := make([]*QueueSendResultItem, 0, len(r.Results))
 	for _, res := range r.Results {
-		results = append(results, &SendQueueMessageResultItem{
+		results = append(results, &QueueSendResultItem{
 			MessageID:    res.MessageID,
 			SentAt:       res.SentAt,
 			ExpirationAt: res.ExpirationAt,
@@ -364,26 +344,5 @@ func QueueUpstreamResponseFromProto(r *pb.QueuesUpstreamResponse) *QueueUpstream
 		Results:      results,
 		IsError:      r.IsError,
 		Error:        r.Error,
-	}
-}
-
-// QueueDownstreamResponseFromProto converts a protobuf QueuesDownstreamResponse to a QueueDownstreamResult.
-func QueueDownstreamResponseFromProto(r *pb.QueuesDownstreamResponse) *QueueDownstreamResult {
-	if r == nil {
-		return nil
-	}
-	msgs := make([]*QueueMessageItem, 0, len(r.Messages))
-	for _, m := range r.Messages {
-		msgs = append(msgs, QueueMessageFromProto(m))
-	}
-	return &QueueDownstreamResult{
-		TransactionID:       r.TransactionId,
-		RefRequestID:        r.RefRequestId,
-		Messages:            msgs,
-		ActiveOffsets:       r.ActiveOffsets,
-		IsError:             r.IsError,
-		Error:               r.Error,
-		TransactionComplete: r.TransactionComplete,
-		Metadata:            r.Metadata,
 	}
 }

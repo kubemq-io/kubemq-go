@@ -59,7 +59,7 @@ func TestIntegration_CommandRoundTrip(t *testing.T) {
 
 	sub, err := receiver.SubscribeToCommands(ctx, ch, "",
 		WithOnCommandReceive(func(cmd *CommandReceive) {
-			_ = receiver.SendResponse(ctx, NewResponse().
+			_ = receiver.SendCommandResponse(ctx, NewCommandReply().
 				SetRequestId(cmd.Id).
 				SetResponseTo(cmd.ResponseTo).
 				SetBody([]byte("cmd-ack")))
@@ -91,7 +91,7 @@ func TestIntegration_QueryRoundTrip(t *testing.T) {
 
 	sub, err := receiver.SubscribeToQueries(ctx, ch, "",
 		WithOnQueryReceive(func(q *QueryReceive) {
-			_ = receiver.SendResponse(ctx, NewResponse().
+			_ = receiver.SendQueryResponse(ctx, NewQueryReply().
 				SetRequestId(q.Id).
 				SetResponseTo(q.ResponseTo).
 				SetBody([]byte("query-result")).
@@ -242,7 +242,7 @@ func TestIntegration_SendCommandDefaultTimeout(t *testing.T) {
 
 	sub, err := receiver.SubscribeToCommands(ctx, ch, "",
 		WithOnCommandReceive(func(cmd *CommandReceive) {
-			_ = receiver.SendResponse(ctx, NewResponse().
+			_ = receiver.SendCommandResponse(ctx, NewCommandReply().
 				SetRequestId(cmd.Id).
 				SetResponseTo(cmd.ResponseTo))
 		}),
@@ -271,7 +271,7 @@ func TestIntegration_SendQueryDefaultTimeout(t *testing.T) {
 
 	sub, err := receiver.SubscribeToQueries(ctx, ch, "",
 		WithOnQueryReceive(func(q *QueryReceive) {
-			_ = receiver.SendResponse(ctx, NewResponse().
+			_ = receiver.SendQueryResponse(ctx, NewQueryReply().
 				SetRequestId(q.Id).
 				SetResponseTo(q.ResponseTo).
 				SetBody([]byte("result")))

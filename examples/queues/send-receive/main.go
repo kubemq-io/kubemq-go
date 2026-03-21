@@ -49,12 +49,12 @@ func main() {
 	}
 	fmt.Printf("Sent: id=%s\n", result.MessageID)
 
-	// Receive (consume) messages from the queue.
-	resp, err := client.ReceiveQueueMessages(ctx, &kubemq.ReceiveQueueMessagesRequest{
-		Channel:             channel,
-		MaxNumberOfMessages: 10,
-		WaitTimeSeconds:     5,
-		IsPeak:              false,
+	// Receive (consume) messages from the queue via PollQueue.
+	resp, err := client.PollQueue(ctx, &kubemq.PollRequest{
+		Channel:            channel,
+		MaxItems:           10,
+		WaitTimeoutSeconds: 5,
+		AutoAck:            true,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -62,9 +62,9 @@ func main() {
 	if resp.IsError {
 		log.Fatalf("Receive failed: %s", resp.Error)
 	}
-	fmt.Printf("Received: %d messages\n", resp.MessagesReceived)
-	for _, m := range resp.Messages {
-		fmt.Printf("  body=%s metadata=%s\n", m.Body, m.Metadata)
+	fmt.Printf("Received: %d messages\n", len(resp.Messages))
+	for _, dsMsg := range resp.Messages {
+		fmt.Printf("  body=%s metadata=%s\n", dsMsg.Message.Body, dsMsg.Message.Metadata)
 	}
 }
 

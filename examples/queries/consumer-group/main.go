@@ -40,12 +40,12 @@ func main() {
 	sub, err := client.SubscribeToQueries(ctx, channel, group,
 		kubemq.WithOnQueryReceive(func(q *kubemq.QueryReceive) {
 			fmt.Printf("Worker received: body=%s\n", q.Body)
-			resp := kubemq.NewResponse().
+			resp := kubemq.NewQueryReply().
 				SetRequestId(q.Id).
 				SetResponseTo(q.ResponseTo).
 				SetBody([]byte("group-result")).
 				SetExecutedAt(time.Now())
-			_ = client.SendResponse(ctx, resp)
+			_ = client.SendQueryResponse(ctx, resp)
 			close(done)
 		}),
 		kubemq.WithOnError(func(err error) {

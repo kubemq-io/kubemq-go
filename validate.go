@@ -98,24 +98,6 @@ func validateContent(metadata string, body []byte) error {
 	return nil
 }
 
-func validateQueueReceive(maxMsgs, waitSec int32) error {
-	if maxMsgs < 1 || maxMsgs > 1024 {
-		return &KubeMQError{
-			Code:    ErrCodeValidation,
-			Message: fmt.Sprintf("MaxNumberOfMessages must be between 1 and 1024, got %d", maxMsgs),
-			Cause:   ErrValidation,
-		}
-	}
-	if waitSec < 0 || waitSec > 3600 {
-		return &KubeMQError{
-			Code:    ErrCodeValidation,
-			Message: fmt.Sprintf("WaitTimeSeconds must be between 0 and 3600, got %d", waitSec),
-			Cause:   ErrValidation,
-		}
-	}
-	return nil
-}
-
 func validateMessageBody(body []byte, maxSize int) error {
 	if maxSize <= 0 {
 		maxSize = maxBodySize
@@ -321,7 +303,25 @@ func validateQueueMessage(msg *QueueMessage, opts *Options) error {
 	return nil
 }
 
-func validateResponse(r *Response) error {
+func validateCommandReply(r *CommandReply) error {
+	if r.RequestId == "" {
+		return &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: "response requestId is required",
+			Cause:   ErrValidation,
+		}
+	}
+	if r.ResponseTo == "" {
+		return &KubeMQError{
+			Code:    ErrCodeValidation,
+			Message: "response responseTo channel is required",
+			Cause:   ErrValidation,
+		}
+	}
+	return nil
+}
+
+func validateQueryReply(r *QueryReply) error {
 	if r.RequestId == "" {
 		return &KubeMQError{
 			Code:    ErrCodeValidation,

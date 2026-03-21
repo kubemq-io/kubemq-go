@@ -610,16 +610,13 @@ func TestQueueDownstream_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer gt.Close()
 
-	handle, err := gt.QueueDownstream(ctx, &QueueDownstreamRequest{
-		Channel:  "queue-ch",
-		ClientID: "dl-client",
-	})
+	stream, err := gt.QueueDownstream(ctx)
 	if err != nil {
 		assert.Contains(t, err.Error(), "Unimplemented")
 		return
 	}
-	require.NotNil(t, handle)
-	handle.Close()
+	require.NotNil(t, stream)
+	_ = stream.CloseSend()
 }
 
 // ---------------------------------------------------------------------------
@@ -820,13 +817,13 @@ func TestQueueDownstream_StreamRecv(t *testing.T) {
 
 	impl.mu.Lock()
 	impl.queuesDownstreamFn = func(stream pb.Kubemq_QueuesDownstreamServer) error {
-		_, err := stream.Recv()
+		req, err := stream.Recv()
 		if err != nil {
 			return err
 		}
 		_ = stream.Send(&pb.QueuesDownstreamResponse{
 			TransactionId: "tx-1",
-			RefRequestId:  "req-1",
+			RefRequestId:  req.RequestID,
 			IsError:       false,
 			Messages:      []*pb.QueueMessage{{MessageID: "m1", Channel: "q-ch", Body: []byte("payload")}},
 		})
@@ -842,31 +839,24 @@ func TestQueueDownstream_StreamRecv(t *testing.T) {
 	require.NoError(t, err)
 	defer gt.Close()
 
-	handle, err := gt.QueueDownstream(ctx, &QueueDownstreamRequest{Channel: "q-ch"})
+	stream, err := gt.QueueDownstream(ctx)
 	require.NoError(t, err)
-	require.NotNil(t, handle)
+	require.NotNil(t, stream)
 
-	sendErr := handle.SendFn(&QueueDownstreamSendRequest{
+	sendErr := stream.Send(&pb.QueuesDownstreamRequest{
 		RequestID: "req-1",
 		Channel:   "q-ch",
 		MaxItems:  10,
 	})
 	require.NoError(t, sendErr)
 
-	select {
-	case raw := <-handle.Messages:
-		result, ok := raw.(*QueueDownstreamResult)
-		require.True(t, ok)
-		assert.Equal(t, "tx-1", result.TransactionID)
-		require.Len(t, result.Messages, 1)
-		assert.Equal(t, "m1", result.Messages[0].ID)
-	case err := <-handle.Errors:
-		t.Fatalf("unexpected error: %v", err)
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for queue downstream response")
-	}
+	resp, err := stream.Recv()
+	require.NoError(t, err)
+	assert.Equal(t, "tx-1", resp.TransactionId)
+	require.Len(t, resp.Messages, 1)
+	assert.Equal(t, "m1", resp.Messages[0].MessageID)
 
-	handle.Close()
+	_ = stream.CloseSend()
 }
 
 func TestQueueDownstream_StreamIsError(t *testing.T) {
@@ -894,24 +884,22 @@ func TestQueueDownstream_StreamIsError(t *testing.T) {
 	require.NoError(t, err)
 	defer gt.Close()
 
-	handle, err := gt.QueueDownstream(ctx, &QueueDownstreamRequest{Channel: "q-ch"})
+	stream, err := gt.QueueDownstream(ctx)
 	require.NoError(t, err)
-	require.NotNil(t, handle)
+	require.NotNil(t, stream)
 
-	sendErr := handle.SendFn(&QueueDownstreamSendRequest{
+	sendErr := stream.Send(&pb.QueuesDownstreamRequest{
 		RequestID: "req-1",
 		Channel:   "q-ch",
 	})
 	require.NoError(t, sendErr)
 
-	select {
-	case err := <-handle.Errors:
-		assert.Contains(t, err.Error(), "queue not found")
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for queue downstream error")
-	}
+	resp, err := stream.Recv()
+	require.NoError(t, err)
+	assert.True(t, resp.IsError)
+	assert.Contains(t, resp.Error, "queue not found")
 
-	handle.Close()
+	_ = stream.CloseSend()
 }
 
 // ---------------------------------------------------------------------------

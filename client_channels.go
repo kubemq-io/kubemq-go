@@ -160,3 +160,78 @@ func (c *Client) ListChannels(ctx context.Context, channelType, search string) (
 	}
 	return out, nil
 }
+
+// CreateEventsChannel creates an events channel with the given name.
+func (c *Client) CreateEventsChannel(ctx context.Context, name string) error {
+	return c.CreateChannel(ctx, name, ChannelTypeEvents)
+}
+
+// CreateEventsStoreChannel creates an events-store channel with the given name.
+func (c *Client) CreateEventsStoreChannel(ctx context.Context, name string) error {
+	return c.CreateChannel(ctx, name, ChannelTypeEventsStore)
+}
+
+// CreateCommandsChannel creates a commands channel with the given name.
+func (c *Client) CreateCommandsChannel(ctx context.Context, name string) error {
+	return c.CreateChannel(ctx, name, ChannelTypeCommands)
+}
+
+// CreateQueriesChannel creates a queries channel with the given name.
+func (c *Client) CreateQueriesChannel(ctx context.Context, name string) error {
+	return c.CreateChannel(ctx, name, ChannelTypeQueries)
+}
+
+// CreateQueuesChannel creates a queues channel with the given name.
+func (c *Client) CreateQueuesChannel(ctx context.Context, name string) error {
+	return c.CreateChannel(ctx, name, ChannelTypeQueues)
+}
+
+// DeleteEventsChannel deletes an events channel with the given name.
+func (c *Client) DeleteEventsChannel(ctx context.Context, name string) error {
+	return c.DeleteChannel(ctx, name, ChannelTypeEvents)
+}
+
+// DeleteEventsStoreChannel deletes an events-store channel with the given name.
+func (c *Client) DeleteEventsStoreChannel(ctx context.Context, name string) error {
+	return c.DeleteChannel(ctx, name, ChannelTypeEventsStore)
+}
+
+// DeleteCommandsChannel deletes a commands channel with the given name.
+func (c *Client) DeleteCommandsChannel(ctx context.Context, name string) error {
+	return c.DeleteChannel(ctx, name, ChannelTypeCommands)
+}
+
+// DeleteQueriesChannel deletes a queries channel with the given name.
+func (c *Client) DeleteQueriesChannel(ctx context.Context, name string) error {
+	return c.DeleteChannel(ctx, name, ChannelTypeQueries)
+}
+
+// DeleteQueuesChannel deletes a queues channel with the given name.
+func (c *Client) DeleteQueuesChannel(ctx context.Context, name string) error {
+	return c.DeleteChannel(ctx, name, ChannelTypeQueues)
+}
+
+// ListEventsChannels lists events channels, optionally filtered by search string.
+func (c *Client) ListEventsChannels(ctx context.Context, search string) ([]*ChannelInfo, error) {
+	return c.ListChannels(ctx, ChannelTypeEvents, search)
+}
+
+// ListEventsStoreChannels lists events-store channels, optionally filtered by search string.
+func (c *Client) ListEventsStoreChannels(ctx context.Context, search string) ([]*ChannelInfo, error) {
+	return c.ListChannels(ctx, ChannelTypeEventsStore, search)
+}
+
+// ListCommandsChannels lists commands channels, optionally filtered by search string.
+func (c *Client) ListCommandsChannels(ctx context.Context, search string) ([]*ChannelInfo, error) {
+	return c.ListChannels(ctx, ChannelTypeCommands, search)
+}
+
+// ListQueriesChannels lists queries channels, optionally filtered by search string.
+func (c *Client) ListQueriesChannels(ctx context.Context, search string) ([]*ChannelInfo, error) {
+	return c.ListChannels(ctx, ChannelTypeQueries, search)
+}
+
+// ListQueuesChannels lists queues channels, optionally filtered by search string.
+func (c *Client) ListQueuesChannels(ctx context.Context, search string) ([]*ChannelInfo, error) {
+	return c.ListChannels(ctx, ChannelTypeQueues, search)
+}

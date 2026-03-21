@@ -30,10 +30,9 @@ func ExampleNewClient_withOptions() {
 	ctx := context.Background()
 
 	client, err := kubemq.NewClient(ctx,
-		kubemq.WithAddress("kubemq-server.example.com", 50000),
+		kubemq.WithAddress("localhost", 50000),
 		kubemq.WithClientId("my-service"),
 		kubemq.WithConnectionTimeout(10*time.Second),
-		kubemq.WithAuthToken("my-auth-token"),
 		kubemq.WithCheckConnection(false),
 	)
 	if err != nil {
@@ -169,12 +168,12 @@ func ExampleClient_SubscribeToCommands() {
 		kubemq.WithOnCommandReceive(func(cmd *kubemq.CommandReceive) {
 			fmt.Printf("command received: id=%s body=%s\n", cmd.Id, cmd.Body)
 
-			resp := kubemq.NewResponse().
+			resp := kubemq.NewCommandReply().
 				SetRequestId(cmd.Id).
 				SetResponseTo(cmd.ResponseTo).
 				SetExecutedAt(time.Now())
 
-			if err := client.SendResponse(ctx, resp); err != nil {
+			if err := client.SendCommandResponse(ctx, resp); err != nil {
 				log.Println("failed to send response:", err)
 			}
 		}),
