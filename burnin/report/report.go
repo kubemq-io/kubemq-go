@@ -46,8 +46,8 @@ type PatternStats struct {
 	LatencyP95MS     float64 `json:"latency_p95_ms,omitempty"`
 	LatencyP99MS     float64 `json:"latency_p99_ms,omitempty"`
 	LatencyP999MS    float64 `json:"latency_p999_ms,omitempty"`
-	AvgThroughput    float64 `json:"avg_rate,omitempty"`
-	PeakThroughput   float64 `json:"peak_rate,omitempty"`
+	AvgThroughput    float64 `json:"avg_rate"`
+	PeakThroughput   float64 `json:"peak_rate"`
 	TargetRate       int     `json:"target_rate"`
 	BytesSent        uint64  `json:"bytes_sent,omitempty"`
 	BytesReceived    uint64  `json:"bytes_received,omitempty"`
@@ -58,7 +58,7 @@ type PatternStats struct {
 	RPCP95MS         float64 `json:"rpc_p95_ms,omitempty"`
 	RPCP99MS         float64 `json:"rpc_p99_ms,omitempty"`
 	RPCP999MS        float64 `json:"rpc_p999_ms,omitempty"`
-	AvgThroughputRPC float64 `json:"avg_throughput_rpc_sec,omitempty"`
+	AvgThroughputRPC float64 `json:"avg_throughput_rpc_sec"`
 	Unconfirmed      int64   `json:"unconfirmed,omitempty"`
 
 	// v2 multi-channel fields
