@@ -289,6 +289,11 @@ func (r *QueueDownstreamReceiver) Poll(ctx context.Context, req *PollRequest) (*
 	select {
 	case r.sendCh <- pbReq:
 	case <-reconnectCh:
+		// Built-in delay to prevent callers without backoff from spinning at CPU speed
+		select {
+		case <-ctx.Done():
+		case <-time.After(500 * time.Millisecond):
+		}
 		return nil, fmt.Errorf("kubemq: stream disconnected, retry poll")
 	case <-r.stopCh:
 		return nil, fmt.Errorf("kubemq: receiver closed")
@@ -308,6 +313,11 @@ func (r *QueueDownstreamReceiver) Poll(ctx context.Context, req *PollRequest) (*
 			return r.buildPollResponse(resp, req.AutoAck), nil
 
 		case <-reconnectCh:
+			// Built-in delay to prevent callers without backoff from spinning at CPU speed
+			select {
+			case <-ctx.Done():
+			case <-time.After(500 * time.Millisecond):
+			}
 			return nil, fmt.Errorf("kubemq: stream disconnected, retry poll")
 
 		case <-r.stopCh:
