@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	pb "github.com/kubemq-io/kubemq-go/v2/pb"
+	pb "github.com/kubemq-io/protobuf/go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
