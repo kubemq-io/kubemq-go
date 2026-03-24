@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
-	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 	"github.com/kubemq-io/kubemq-go/v2/pkg/uuid"
+	pb "github.com/kubemq-io/protobuf/go"
 )
 
 // QueueDownstreamReceiver manages a persistent queue downstream stream with

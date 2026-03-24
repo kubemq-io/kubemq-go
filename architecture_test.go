@@ -19,7 +19,7 @@ func TestNoProtoInPublicAPI(t *testing.T) {
 	forbiddenPrefixes := []string{
 		"google.golang.org/grpc",
 		"google.golang.org/protobuf",
-		"github.com/kubemq-io/kubemq-go/v2/pb",
+		"github.com/kubemq-io/protobuf",
 		"github.com/gogo/protobuf",
 		"go.opencensus.io",
 		"github.com/go-resty/resty",

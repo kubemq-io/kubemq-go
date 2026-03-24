@@ -9,7 +9,7 @@ import (
 	"github.com/kubemq-io/kubemq-go/v2/internal/middleware"
 	"github.com/kubemq-io/kubemq-go/v2/internal/testutil"
 	"github.com/kubemq-io/kubemq-go/v2/internal/transport"
-	pb "github.com/kubemq-io/kubemq-go/v2/pb"
+	pb "github.com/kubemq-io/protobuf/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

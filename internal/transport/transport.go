@@ -10,7 +10,7 @@ import (
 	"fmt"
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/types"
-	pb "github.com/kubemq-io/kubemq-go/v2/pb"
+	pb "github.com/kubemq-io/protobuf/go"
 )
 
 // Transport is the internal transport interface for communicating with the
