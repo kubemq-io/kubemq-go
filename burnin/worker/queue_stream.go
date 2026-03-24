@@ -61,6 +61,8 @@ func (w *QueueStreamWorker) StartProducers() {
 }
 
 // startProducer launches a goroutine that sends queue messages via the upstream stream.
+// It wraps the producer logic in a retry loop: when the upstream handle closes,
+// it waits 2 seconds and recreates the handle (GO-3 fix).
 func (w *QueueStreamWorker) startProducer(ctx context.Context, producerID string) {
 	var seq atomic.Uint64
 
@@ -69,95 +71,112 @@ func (w *QueueStreamWorker) startProducer(ctx context.Context, producerID string
 		defer w.wg.Done()
 		ws := w.getOrCreateProducerStat(producerID)
 
-		handle, err := w.Client().QueueUpstream(ctx)
-		if err != nil {
-			w.Logger().Error("failed to open queue upstream", "producer", producerID, "error", err)
-			w.RecordError("stream_open_failure")
-			ws.errors.Add(1)
-			return
-		}
-		defer handle.Close()
-
-		w.wg.Add(1)
-		go func() {
-			defer w.wg.Done()
-			select {
-			case <-ctx.Done():
-			case <-handle.Done:
-			}
-		}()
-
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-handle.Done:
-				w.Logger().Warn("queue upstream closed", "producer", producerID)
-				return
 			default:
 			}
 
-			if err := w.WaitForRate(ctx); err != nil {
+			w.runProducerStream(ctx, producerID, ws, &seq)
+
+			// If context is done, exit cleanly
+			if ctx.Err() != nil {
 				return
 			}
 
-			for w.BackpressureCheck() {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(100 * time.Millisecond):
-				}
-			}
-
-			currentSeq := seq.Add(1)
-			body, crcHex := payload.Encode(metrics.SDK(), w.Pattern(), producerID, currentSeq, w.MessageSize())
-
-			requestID := fmt.Sprintf("%s-%d", producerID, currentSeq)
-			msg := &kubemq.QueueMessage{
-				ClientID: producerID,
-				Channel:  w.ChannelName(),
-				Metadata: "",
-				Body:     body,
-				Tags:     map[string]string{"content_hash": crcHex},
-			}
-
-			sendStart := time.Now()
-			sendErr := handle.Send(requestID, []*kubemq.QueueMessage{msg})
-			sendDuration := time.Since(sendStart)
-			metrics.ObserveSendDuration(w.Pattern(), sendDuration)
-
-			if sendErr != nil {
-				w.RecordError("send_failure")
-				ws.errors.Add(1)
-				w.Logger().Error("failed to send queue upstream message",
-					"producer", producerID, "seq", currentSeq, "error", sendErr)
-				continue
-			}
-
+			// Wait before retrying (GO-3: don't exit permanently on handle.Done)
+			w.Logger().Warn("producer stream ended, retrying in 2s", "producer", producerID)
 			select {
 			case <-ctx.Done():
 				return
-			case <-handle.Done:
-				w.Logger().Warn("queue upstream closed while waiting for result", "producer", producerID)
-				return
-			case result, ok := <-handle.Results:
-				if !ok {
-					w.Logger().Warn("queue upstream results channel closed", "producer", producerID)
-					return
-				}
-				if result.IsError {
-					w.RecordError("upstream_result_error")
-					ws.errors.Add(1)
-					w.Logger().Error("queue upstream result error",
-						"producer", producerID, "seq", currentSeq, "error", result.Error)
-					continue
-				}
-				ws.latAccum.Record(sendDuration)
-				w.RecordBytesSent(producerID, len(body))
-				w.RecordSend(producerID, currentSeq)
+			case <-time.After(2 * time.Second):
 			}
 		}
 	}()
+}
+
+// runProducerStream opens an upstream handle and sends messages until it closes or ctx is done.
+func (w *QueueStreamWorker) runProducerStream(ctx context.Context, producerID string, ws *WorkerStat, seq *atomic.Uint64) {
+	handle, err := w.Client().QueueUpstream(ctx)
+	if err != nil {
+		w.Logger().Error("failed to open queue upstream", "producer", producerID, "error", err)
+		w.RecordError("stream_open_failure")
+		ws.errors.Add(1)
+		return
+	}
+	defer handle.Close()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-handle.Done:
+			w.Logger().Warn("queue upstream closed", "producer", producerID)
+			return
+		default:
+		}
+
+		if err := w.WaitForRate(ctx); err != nil {
+			return
+		}
+
+		for w.BackpressureCheck() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+
+		currentSeq := seq.Add(1)
+		body, crcHex := payload.Encode(metrics.SDK(), w.Pattern(), producerID, currentSeq, w.MessageSize())
+
+		requestID := fmt.Sprintf("%s-%d", producerID, currentSeq)
+		msg := &kubemq.QueueMessage{
+			ClientID: producerID,
+			Channel:  w.ChannelName(),
+			Metadata: "",
+			Body:     body,
+			Tags:     map[string]string{"content_hash": crcHex},
+		}
+
+		sendStart := time.Now()
+		sendErr := handle.Send(requestID, []*kubemq.QueueMessage{msg})
+		sendDuration := time.Since(sendStart)
+		metrics.ObserveSendDuration(w.Pattern(), sendDuration)
+
+		if sendErr != nil {
+			w.RecordError("send_failure")
+			ws.errors.Add(1)
+			w.Logger().Error("failed to send queue upstream message",
+				"producer", producerID, "seq", currentSeq, "error", sendErr)
+			continue
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-handle.Done:
+			w.Logger().Warn("queue upstream closed while waiting for result", "producer", producerID)
+			return
+		case result, ok := <-handle.Results:
+			if !ok {
+				w.Logger().Warn("queue upstream results channel closed", "producer", producerID)
+				return
+			}
+			if result.IsError {
+				w.RecordError("upstream_result_error")
+				ws.errors.Add(1)
+				w.Logger().Error("queue upstream result error",
+					"producer", producerID, "seq", currentSeq, "error", result.Error)
+				continue
+			}
+			ws.latAccum.Record(sendDuration)
+			w.RecordBytesSent(producerID, len(body))
+			w.RecordSend(producerID, currentSeq)
+		}
+	}
 }
 
 // startConsumer launches a goroutine that receives queue messages via the downstream receiver.
@@ -176,6 +195,13 @@ func (w *QueueStreamWorker) startConsumer(ctx context.Context, consumerID string
 			}
 
 			w.runConsumerStream(ctx, consumerID, cfg)
+
+			// GO-4: sleep between runConsumerStream restarts to avoid rapid spin
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
 		}
 	}()
 }
@@ -224,11 +250,21 @@ func (w *QueueStreamWorker) runConsumerStream(ctx context.Context, consumerID st
 			}
 			w.Logger().Error("poll failed", "consumer", consumerID, "error", err)
 			w.RecordError("downstream_get_failure")
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
 			continue
 		}
 		if resp.IsError {
 			w.Logger().Error("poll error", "consumer", consumerID, "error", resp.Error)
 			w.RecordError("downstream_get_failure")
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
 			continue
 		}
 
