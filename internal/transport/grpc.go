@@ -12,8 +12,8 @@ import (
 
 	"github.com/kubemq-io/kubemq-go/v2/internal/middleware"
 	"github.com/kubemq-io/kubemq-go/v2/internal/types"
-	pb "github.com/kubemq-io/kubemq-go/v2/pb"
 	"github.com/kubemq-io/kubemq-go/v2/pkg/uuid"
+	pb "github.com/kubemq-io/protobuf/go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
