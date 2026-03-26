@@ -292,6 +292,11 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	// Environment variable override for broker address
+	if envAddr := os.Getenv("KUBEMQ_BROKER_ADDRESS"); envAddr != "" {
+		c.Broker.Address = envAddr
+	}
+
 	if err := parseDurations(c); err != nil {
 		return nil, err
 	}
