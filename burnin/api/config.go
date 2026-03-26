@@ -14,6 +14,7 @@ var durationRegex = regexp.MustCompile(`^\d+[smhd]$`)
 
 // RunConfig is the API request body for POST /run/start (v2 spec).
 type RunConfig struct {
+	Broker                 *BrokerOverride           `json:"broker,omitempty"`
 	Mode                   string                    `json:"mode"`
 	Duration               string                    `json:"duration"`
 	RunID                  string                    `json:"run_id"`
@@ -28,6 +29,11 @@ type RunConfig struct {
 	Shutdown               *ShutdownConfig           `json:"shutdown"`
 	Metrics                *MetricsConfig            `json:"metrics"`
 	Warmup                 *WarmupConfig             `json:"warmup"`
+}
+
+// BrokerOverride allows overriding the broker address per-run via the API.
+type BrokerOverride struct {
+	Address string `json:"address,omitempty"`
 }
 
 // PatternConfig is the v2 per-pattern config from the API.
@@ -238,6 +244,9 @@ func (rc *RunConfig) ToInternalConfig(startupCfg *config.Config) (*config.Config
 
 	c.Broker.Address = startupCfg.Broker.Address
 	c.Broker.ClientIDPrefix = startupCfg.Broker.ClientIDPrefix
+	if rc.Broker != nil && rc.Broker.Address != "" {
+		c.Broker.Address = rc.Broker.Address
+	}
 	c.Recovery = startupCfg.Recovery
 	c.Logging = startupCfg.Logging
 	c.Metrics.Port = startupCfg.Metrics.Port
