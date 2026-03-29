@@ -181,7 +181,7 @@ jobs:
 
       - name: Upload to Codecov
         if: github.event_name == 'push'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.out
           flags: unittests
