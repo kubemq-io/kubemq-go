@@ -1,7 +1,8 @@
 // Example: queues/peek-messages
 //
-// Demonstrates polling queue messages without auto-ack (transactional).
-// Messages are received and can be individually acknowledged or rejected.
+// Demonstrates peeking at queue messages without consuming them.
+// Messages are read (peeked) but not removed from the queue —
+// they remain available for normal consumption afterwards.
 //
 // Channel: go-queues.peek-messages
 // Client ID: go-queues-peek-messages-client
@@ -34,16 +35,18 @@ func main() {
 
 	channel := "go-queues.peek-messages"
 
-	// Send a message to receive.
-	_, err = client.SendQueueMessage(ctx, kubemq.NewQueueMessage().
-		SetChannel(channel).
-		SetBody([]byte("transactional message")))
-	if err != nil {
-		log.Fatal(err)
+	// Send 3 messages to the queue.
+	for i := 1; i <= 3; i++ {
+		_, err = client.SendQueueMessage(ctx, kubemq.NewQueueMessage().
+			SetChannel(channel).
+			SetBody(fmt.Appendf(nil, "message-%d", i)))
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-	fmt.Println("Message sent")
+	fmt.Println("Sent 3 messages")
 
-	// Poll without auto-ack (transactional mode).
+	// Peek: poll with AutoAck=false so messages stay in the queue.
 	resp, err := client.PollQueue(ctx, &kubemq.PollRequest{
 		Channel:            channel,
 		MaxItems:           10,
@@ -56,14 +59,22 @@ func main() {
 	if resp.IsError {
 		log.Fatalf("Poll failed: %s", resp.Error)
 	}
-	fmt.Printf("Polled: %d messages (pending ack)\n", len(resp.Messages))
+	fmt.Printf("Peeked: %d messages (not consumed)\n", len(resp.Messages))
 	for _, dsMsg := range resp.Messages {
 		fmt.Printf("  body=%s\n", dsMsg.Message.Body)
 	}
 
-	// Acknowledge all messages in the transaction.
-	if err := resp.AckAll(); err != nil {
-		log.Fatalf("AckAll failed: %s", err)
+	// Messages were only peeked, not permanently consumed. Clean up by
+	// bulk-acknowledging them so the queue is empty after the demo.
+	ackResp, err := client.AckAllQueueMessages(ctx, &kubemq.AckAllQueueMessagesRequest{
+		Channel:         channel,
+		WaitTimeSeconds: 5,
+	})
+	if err != nil {
+		log.Fatal(err)
 	}
-	fmt.Println("All messages acknowledged")
+	if ackResp.IsError {
+		log.Printf("Ack warning: %s", ackResp.Error)
+	}
+	fmt.Printf("Acknowledged %d messages\n", ackResp.AffectedMessages)
 }
