@@ -55,6 +55,9 @@ func main() {
 		defer sub.Unsubscribe()
 	}
 
+	// Allow subscriptions to fully establish before publishing.
+	time.Sleep(time.Second)
+
 	// Publish a single event — all 3 subscribers should receive it.
 	err = client.SendEvent(ctx, kubemq.NewEvent().
 		SetChannel(channel).
