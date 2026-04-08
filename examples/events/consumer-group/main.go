@@ -53,6 +53,9 @@ func main() {
 	}
 	defer sub.Unsubscribe()
 
+	// Allow subscription to fully establish before publishing.
+	time.Sleep(time.Second)
+
 	// Publish an event to the group channel.
 	err = client.SendEvent(ctx, kubemq.NewEvent().
 		SetChannel(channel).
