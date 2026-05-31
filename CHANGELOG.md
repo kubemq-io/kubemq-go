@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-05-31
+
+### Added
+- Environment variable override and API support for broker address (51837ed)
+
+### Improvements
+- Update gRPC 1.79.3 → 1.81.1, OpenTelemetry 1.42 → 1.44, and golang.org/x packages for security advisories (a22b72a)
+- Refactor examples: subscription delay for stability, refined queue peeking logic (006654e)
+
 ## [2.0.0] - 2026-03-11
 
 ### Added
