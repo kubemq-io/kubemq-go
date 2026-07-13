@@ -1,0 +1,113 @@
+version: "2"
+
+broker:
+  address: "localhost:50000"
+  client_id_prefix: "burnin-go"
+
+mode: soak
+duration: 1h
+run_id: ""
+
+patterns:
+  events:
+    enabled: true
+    channels: 1
+    producers_per_channel: 1
+    consumers_per_channel: 1
+    consumer_group: false
+    rate: 100
+  events_store:
+    enabled: true
+    channels: 1
+    producers_per_channel: 1
+    consumers_per_channel: 1
+    consumer_group: false
+    rate: 100
+  queue_stream:
+    enabled: true
+    channels: 1
+    producers_per_channel: 1
+    consumers_per_channel: 1
+    rate: 50
+  queue_simple:
+    enabled: true
+    channels: 1
+    producers_per_channel: 1
+    consumers_per_channel: 1
+    rate: 50
+  commands:
+    enabled: true
+    channels: 1
+    senders_per_channel: 1
+    responders_per_channel: 1
+    rate: 20
+  queries:
+    enabled: true
+    channels: 1
+    senders_per_channel: 1
+    responders_per_channel: 1
+    rate: 20
+
+api:
+  port: 8888
+  enabled: true
+
+queue:
+  poll_max_messages: 10
+  poll_wait_timeout_seconds: 5
+  auto_ack: false
+  max_depth: 1000000
+
+rpc:
+  timeout_ms: 5000
+
+message:
+  size_mode: fixed
+  size_bytes: 1024
+  size_distribution: "256:80,4096:15,65536:5"
+  reorder_window: 10000
+
+metrics:
+  port: 8888
+  report_interval: 30s
+
+logging:
+  format: text
+  level: info
+
+forced_disconnect:
+  interval: "0"
+  duration: 5s
+
+recovery:
+  reconnect_interval: 1s
+  reconnect_max_interval: 30s
+  reconnect_multiplier: 2.0
+
+shutdown:
+  drain_timeout_seconds: 10
+  cleanup_channels: true
+
+output:
+  report_file: ""
+  sdk_version: ""
+
+thresholds:
+  max_loss_pct: 0.0
+  max_events_loss_pct: 5.0
+  max_duplication_pct: 0.1
+  max_p99_latency_ms: 1000
+  max_p999_latency_ms: 5000
+  min_throughput_pct: 90
+  max_error_rate_pct: 1.0
+  max_memory_growth_factor: 2.0
+  max_downtime_pct: 10
+  max_duration: 168h
+
+warmup:
+  max_parallel_channels: 10
+  timeout_per_channel_ms: 5000
+  warmup_duration: ""
+
+cors:
+  origins: "*"
