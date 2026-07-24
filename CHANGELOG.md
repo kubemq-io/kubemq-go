@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-07-24
+
+### Security
+- Update `google.golang.org/grpc` 1.81.1 → 1.82.1 — fixes GHSA-hrxh-6v49-42gf.
+- Update `golang.org/x/net` 0.55.0 → 0.56.0 (CVE-2026-46600) and `golang.org/x/text` 0.37.0 → 0.39.0 (CVE-2026-56852) — DoS advisories.
+- `go mod tidy` also bumped transitive `golang.org/x/sys` 0.45.0 → 0.46.0 and `google.golang.org/genproto/googleapis/rpc`. Burn-in Dockerfile builder image bumped `golang:1.23-alpine` → `golang:1.25-alpine`.
+
 ## [2.0.3] - 2026-05-31
 
 ### Added
