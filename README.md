@@ -42,7 +42,7 @@ Requires Go 1.23 or later. Compatible with KubeMQ server v2.2 or later (see [COM
 #### Prerequisites
 
 - Go 1.23+
-- KubeMQ server running on `localhost:50000` (`docker run -d -p 50000:50000 kubemq/kubemq`)
+- KubeMQ server running on `localhost:50000` (`docker run -d -p 50000:50000 europe-docker.pkg.dev/kubemq/images/kubemq-next:latest`)
 - Install: `go get github.com/kubemq-io/kubemq-go/v2`
 
 #### Send an Event

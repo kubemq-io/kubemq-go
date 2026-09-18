@@ -8,7 +8,7 @@ Thank you for your interest in contributing to the KubeMQ Go SDK!
 
 - Go 1.23 or later
 - KubeMQ server (for integration tests):
-  `docker run -d -p 50000:50000 kubemq/kubemq`
+  `docker run -d -p 50000:50000 europe-docker.pkg.dev/kubemq/images/kubemq-next:latest`
 - golangci-lint: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
 
 ### Building

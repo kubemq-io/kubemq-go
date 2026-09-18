@@ -93,7 +93,7 @@ jobs:
     needs: [lint, unit-tests]
     services:
       kubemq:
-        image: kubemq/kubemq:latest
+        image: europe-docker.pkg.dev/kubemq/images/kubemq-next:latest
         ports:
           - 50000:50000
           - 8080:8080
