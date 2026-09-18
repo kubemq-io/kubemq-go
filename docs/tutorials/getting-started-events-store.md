@@ -11,7 +11,7 @@ A persistent pub/sub system where messages are stored on the server and can be r
 - **Go 1.21 or later** installed ([download](https://go.dev/dl/))
 - **KubeMQ server** running on `localhost:50000`. The quickest way:
   ```bash
-  docker run -d -p 50000:50000 -p 9090:9090 kubemq/kubemq
+  docker run -d -p 50000:50000 -p 9090:9090 europe-docker.pkg.dev/kubemq/images/kubemq-next:latest
   ```
 - A new Go module for your project:
   ```bash
